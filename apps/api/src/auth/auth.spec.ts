@@ -31,7 +31,7 @@ describe("Auth (integration)", () => {
   // GET /auth/me
   // -------------------------------------------------------------------------
 
-  describe("GET /api/v1/auth/me", () => {
+  describe("GET /v1/auth/me", () => {
     it("returns authenticated user profile", async () => {
       const auth = await createAuthenticatedUser(prisma, module, {
         email: "gandalf@shire.com",
@@ -39,7 +39,7 @@ describe("Auth (integration)", () => {
       });
 
       const res = await request(app.getHttpServer())
-        .get("/api/v1/auth/me")
+        .get("/v1/auth/me")
         .set("Authorization", auth.authHeader)
         .expect(200);
 
@@ -51,14 +51,12 @@ describe("Auth (integration)", () => {
     });
 
     it("returns 401 without auth", async () => {
-      await request(app.getHttpServer())
-        .get("/api/v1/auth/me")
-        .expect(401);
+      await request(app.getHttpServer()).get("/v1/auth/me").expect(401);
     });
 
     it("returns 401 with invalid token", async () => {
       await request(app.getHttpServer())
-        .get("/api/v1/auth/me")
+        .get("/v1/auth/me")
         .set("Authorization", "Bearer invalid-token")
         .expect(401);
     });
@@ -68,12 +66,12 @@ describe("Auth (integration)", () => {
   // GET /auth/sessions
   // -------------------------------------------------------------------------
 
-  describe("GET /api/v1/auth/sessions", () => {
+  describe("GET /v1/auth/sessions", () => {
     it("lists active sessions for the user", async () => {
       const auth = await createAuthenticatedUser(prisma, module);
 
       const res = await request(app.getHttpServer())
-        .get("/api/v1/auth/sessions")
+        .get("/v1/auth/sessions")
         .set("Authorization", auth.authHeader)
         .expect(200);
 
@@ -86,12 +84,12 @@ describe("Auth (integration)", () => {
   // DELETE /auth/sessions/:id
   // -------------------------------------------------------------------------
 
-  describe("DELETE /api/v1/auth/sessions/:id", () => {
+  describe("DELETE /v1/auth/sessions/:id", () => {
     it("invalidates a specific session", async () => {
       const auth = await createAuthenticatedUser(prisma, module);
 
       await request(app.getHttpServer())
-        .delete(`/api/v1/auth/sessions/${auth.session.id}`)
+        .delete(`/v1/auth/sessions/${auth.session.id}`)
         .set("Authorization", auth.authHeader)
         .expect(204);
 
@@ -111,7 +109,7 @@ describe("Auth (integration)", () => {
       });
 
       await request(app.getHttpServer())
-        .delete(`/api/v1/auth/sessions/${user1.session.id}`)
+        .delete(`/v1/auth/sessions/${user1.session.id}`)
         .set("Authorization", user2.authHeader)
         .expect(403);
     });
@@ -121,12 +119,12 @@ describe("Auth (integration)", () => {
   // POST /auth/logout
   // -------------------------------------------------------------------------
 
-  describe("POST /api/v1/auth/logout", () => {
+  describe("POST /v1/auth/logout", () => {
     it("invalidates current session and clears cookie", async () => {
       const auth = await createAuthenticatedUser(prisma, module);
 
       const res = await request(app.getHttpServer())
-        .post("/api/v1/auth/logout")
+        .post("/v1/auth/logout")
         .set("Authorization", auth.authHeader)
         .expect(204);
 

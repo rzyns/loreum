@@ -106,7 +106,7 @@ Connect any MCP-compatible AI to read and write your world data. Generate a proj
       "command": "node",
       "args": ["path/to/loreum/apps/mcp/dist/index.js"],
       "env": {
-        "MCP_API_BASE_URL": "https://loreum.app/api/v1",
+        "MCP_API_BASE_URL": "https://api.loreum.app/v1",
         "MCP_API_TOKEN": "your-api-key"
       }
     }

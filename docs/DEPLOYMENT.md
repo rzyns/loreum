@@ -83,7 +83,7 @@ This separation keeps deployment secrets and infrastructure config out of the op
 ## Health Checks
 
 ```
-GET /api/v1/health
+GET /v1/health
 ```
 
 Returns status of database, Redis, and R2 connectivity.

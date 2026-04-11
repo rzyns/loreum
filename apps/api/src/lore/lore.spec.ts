@@ -31,13 +31,13 @@ describe("Lore (integration)", () => {
     authHeader = auth.authHeader;
 
     const proj = await request(app.getHttpServer())
-      .post("/api/v1/projects")
+      .post("/v1/projects")
       .set("Authorization", authHeader)
       .send({ name: "Lore World" });
     projectSlug = proj.body.slug;
   });
 
-  const base = () => `/api/v1/projects/${projectSlug}/lore`;
+  const base = () => `/v1/projects/${projectSlug}/lore`;
 
   it("creates a lore article", async () => {
     const res = await request(app.getHttpServer())

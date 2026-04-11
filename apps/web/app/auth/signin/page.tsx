@@ -4,8 +4,7 @@ import Link from "next/link";
 import { Button } from "@loreum/ui/button";
 import { BookOpen } from "lucide-react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3021/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3021/v1";
 
 export default function SignInPage() {
   return (

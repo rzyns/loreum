@@ -32,13 +32,13 @@ describe("Entities (integration)", () => {
 
     // Create a project for entity tests
     const res = await request(app.getHttpServer())
-      .post("/api/v1/projects")
+      .post("/v1/projects")
       .set("Authorization", authHeader)
       .send({ name: "Test World" });
     projectSlug = res.body.slug;
   });
 
-  const base = () => `/api/v1/projects/${projectSlug}/entities`;
+  const base = () => `/v1/projects/${projectSlug}/entities`;
 
   // -------------------------------------------------------------------------
   // CREATE

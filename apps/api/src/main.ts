@@ -12,7 +12,7 @@ async function bootstrap() {
   const config = app.get(AppConfig);
 
   // Global prefix
-  app.setGlobalPrefix("api/v1");
+  app.setGlobalPrefix("v1");
 
   // Cookie parser
   app.use(cookieParser());

@@ -117,7 +117,7 @@ sequenceDiagram
     participant WS as WebSocket
 
     Author->>Web: Fill entity form, submit
-    Web->>API: POST /api/v1/projects/:slug/entities
+    Web->>API: POST /v1/projects/:slug/entities
     API->>API: Validate JWT, check project ownership
     API->>DB: Insert entity + generate slug
     DB-->>API: Entity created
@@ -188,7 +188,7 @@ sequenceDiagram
 
     User->>AI: "Tell me about the elven kingdoms"
     AI->>MCP: tools/call search_project
-    MCP->>API: GET /api/v1/projects/:slug/search?q=elven+kingdoms
+    MCP->>API: GET /v1/projects/:slug/search?q=elven+kingdoms
     API->>DB: Full-text search query
     DB-->>API: Matching entities + lore
     API-->>MCP: Search results JSON
@@ -207,7 +207,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Author->>Web: Click "Upgrade to Pro"
-    Web->>API: POST /api/v1/billing/checkout
+    Web->>API: POST /v1/billing/checkout
     API->>Stripe: Create Checkout Session
     Stripe-->>API: Session URL
     API-->>Web: Redirect URL

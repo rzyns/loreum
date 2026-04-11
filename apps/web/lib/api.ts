@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3021/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3021/v1";
 
 function getCsrfToken(): string | undefined {
   if (typeof document === "undefined") return undefined;

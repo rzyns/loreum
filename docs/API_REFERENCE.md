@@ -8,14 +8,14 @@ Complete reference for the Loreum REST API, WebSocket events, and MCP tools.
 
 ## Overview
 
-| Property | Value |
-| -------- | ----- |
-| Base URL | `http://localhost:3021/api/v1` |
-| Auth | Cookie-based JWT (`auth_token`) or Bearer token |
-| Content-Type | `application/json` |
-| CSRF | Required for state-changing requests when using cookie auth (`x-csrf-token` header) |
-| Rate Limiting | 10 req/sec, 50 req/10s, 200 req/min (global) |
-| Docs (local) | `http://localhost:3021/docs` (Swagger, dev only) |
+| Property      | Value                                                                               |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Base URL      | `http://localhost:3021/v1`                                                          |
+| Auth          | Cookie-based JWT (`auth_token`) or Bearer token                                     |
+| Content-Type  | `application/json`                                                                  |
+| CSRF          | Required for state-changing requests when using cookie auth (`x-csrf-token` header) |
+| Rate Limiting | 10 req/sec, 50 req/10s, 200 req/min (global)                                        |
+| Docs (local)  | `http://localhost:3021/docs` (Swagger, dev only)                                    |
 
 ---
 
@@ -23,11 +23,11 @@ Complete reference for the Loreum REST API, WebSocket events, and MCP tools.
 
 ### Methods
 
-| Method | Usage | Notes |
-| ------ | ----- | ----- |
-| Cookie | Browser sessions | JWT in `auth_token` httpOnly cookie, CSRF token in `csrf_token` cookie |
-| Bearer | MCP server, API keys | `Authorization: Bearer <token>` header, no CSRF required |
-| OAuth | Login flow | Google OAuth2 (Discord, GitHub, LinkedIn planned) |
+| Method | Usage                | Notes                                                                  |
+| ------ | -------------------- | ---------------------------------------------------------------------- |
+| Cookie | Browser sessions     | JWT in `auth_token` httpOnly cookie, CSRF token in `csrf_token` cookie |
+| Bearer | MCP server, API keys | `Authorization: Bearer <token>` header, no CSRF required               |
+| OAuth  | Login flow           | Google OAuth2 (Discord, GitHub, LinkedIn planned)                      |
 
 ### JWT Payload
 
@@ -66,17 +66,18 @@ Skipped for Bearer auth and OAuth callback routes.
 
 ### Prisma Exception Mapping
 
-| Prisma Code | HTTP Status | Meaning |
-| ----------- | ----------- | ------- |
-| P2002 | 409 Conflict | Unique constraint violation |
-| P2025 | 404 Not Found | Record not found |
-| P2003 | 400 Bad Request | Foreign key constraint failure |
-| P2018 | 400 Bad Request | Required relation not found |
-| Other | 500 Internal Server Error | Unexpected database error |
+| Prisma Code | HTTP Status               | Meaning                        |
+| ----------- | ------------------------- | ------------------------------ |
+| P2002       | 409 Conflict              | Unique constraint violation    |
+| P2025       | 404 Not Found             | Record not found               |
+| P2003       | 400 Bad Request           | Foreign key constraint failure |
+| P2018       | 400 Bad Request           | Required relation not found    |
+| Other       | 500 Internal Server Error | Unexpected database error      |
 
 ### Validation
 
 Global `ValidationPipe` with:
+
 - `whitelist: true` - strips unknown properties
 - `transform: true` - transforms payloads to DTO instances
 - `enableImplicitConversion: true` - type coercion from query strings
@@ -94,6 +95,7 @@ All authenticated endpoints require `JwtAuthGuard`. Ownership is enforced - user
 Health check. No authentication required.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -153,10 +155,10 @@ Logout. Clears `auth_token` and `csrf_token` cookies.
 
 Create a new project.
 
-| Field | Type | Required | Validation |
-| ----- | ---- | -------- | ---------- |
-| `name` | string | yes | 1-100 chars |
-| `description` | string | no | max 2000 chars |
+| Field         | Type   | Required | Validation     |
+| ------------- | ------ | -------- | -------------- |
+| `name`        | string | yes      | 1-100 chars    |
+| `description` | string | no       | max 2000 chars |
 
 **Response:** 201, project object (slug auto-generated from name).
 
@@ -174,11 +176,11 @@ Get a project by slug.
 
 Update a project.
 
-| Field | Type | Required | Validation |
-| ----- | ---- | -------- | ---------- |
-| `name` | string | no | 1-100 chars |
-| `description` | string | no | max 2000 chars |
-| `visibility` | enum | no | `PRIVATE`, `PUBLIC`, `UNLISTED` |
+| Field         | Type   | Required | Validation                      |
+| ------------- | ------ | -------- | ------------------------------- |
+| `name`        | string | no       | 1-100 chars                     |
+| `description` | string | no       | max 2000 chars                  |
+| `visibility`  | enum   | no       | `PRIVATE`, `PUBLIC`, `UNLISTED` |
 
 #### `DELETE /projects/:slug` - Built
 
@@ -220,21 +222,21 @@ Save timeline configuration.
 
 Create an entity.
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `type` | enum | yes | `CHARACTER`, `LOCATION`, `ORGANIZATION`, `ITEM` |
-| `name` | string | yes | 1-100 chars. Slug auto-generated |
-| `summary` | string | no | Short description |
-| `description` | string | no | Full description |
-| `backstory` | string | no | History/origin |
-| `secrets` | string | no | Never shown in public wiki |
-| `notes` | string | no | Author's private notes |
-| `imageUrl` | string | no | Entity image URL |
-| `tags` | string[] | no | Tag names (created if they don't exist) |
-| `character` | object | no | `{ status?, species?, age?, role? }` |
-| `location` | object | no | `{ region?, condition?, mapId? }` |
-| `organization` | object | no | `{ ideology?, territory?, status?, parentOrgId? }` |
-| `item` | object | no | `{ itemTypeId?, fields? }` |
+| Field          | Type     | Required | Notes                                              |
+| -------------- | -------- | -------- | -------------------------------------------------- |
+| `type`         | enum     | yes      | `CHARACTER`, `LOCATION`, `ORGANIZATION`, `ITEM`    |
+| `name`         | string   | yes      | 1-100 chars. Slug auto-generated                   |
+| `summary`      | string   | no       | Short description                                  |
+| `description`  | string   | no       | Full description                                   |
+| `backstory`    | string   | no       | History/origin                                     |
+| `secrets`      | string   | no       | Never shown in public wiki                         |
+| `notes`        | string   | no       | Author's private notes                             |
+| `imageUrl`     | string   | no       | Entity image URL                                   |
+| `tags`         | string[] | no       | Tag names (created if they don't exist)            |
+| `character`    | object   | no       | `{ status?, species?, age?, role? }`               |
+| `location`     | object   | no       | `{ region?, condition?, mapId? }`                  |
+| `organization` | object   | no       | `{ ideology?, territory?, status?, parentOrgId? }` |
+| `item`         | object   | no       | `{ itemTypeId?, fields? }`                         |
 
 **Response:** 201, entity object.
 
@@ -242,10 +244,10 @@ Create an entity.
 
 List entities with optional filters.
 
-| Query Param | Type | Notes |
-| ----------- | ---- | ----- |
-| `type` | string | Filter by entity type |
-| `q` | string | Search query |
+| Query Param | Type   | Notes                 |
+| ----------- | ------ | --------------------- |
+| `type`      | string | Filter by entity type |
+| `q`         | string | Search query          |
 
 #### `GET /projects/:projectSlug/entities/:slug` - Built
 
@@ -269,12 +271,12 @@ Update an entity. Same body shape as create, all fields optional.
 
 Create a custom entity type (e.g. "Weapons", "Spells").
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `name` | string | yes | 1-50 chars |
-| `icon` | string | no | Emoji or icon identifier |
-| `color` | string | no | Hex color code |
-| `fieldSchema` | array | no | Field definitions (see below) |
+| Field         | Type   | Required | Notes                         |
+| ------------- | ------ | -------- | ----------------------------- |
+| `name`        | string | yes      | 1-50 chars                    |
+| `icon`        | string | no       | Emoji or icon identifier      |
+| `color`       | string | no       | Hex color code                |
+| `fieldSchema` | array  | no       | Field definitions (see below) |
 
 **Field definition shape:**
 
@@ -314,31 +316,31 @@ List all entity types for a project.
 
 Create a relationship between two entities.
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `sourceEntitySlug` | string | yes | |
-| `targetEntitySlug` | string | yes | |
-| `label` | string | yes | e.g. "Mentor", "Ally", "Located in" |
-| `description` | string | no | |
-| `metadata` | object | no | Arbitrary JSON |
-| `bidirectional` | boolean | no | Default false |
+| Field              | Type    | Required | Notes                               |
+| ------------------ | ------- | -------- | ----------------------------------- |
+| `sourceEntitySlug` | string  | yes      |                                     |
+| `targetEntitySlug` | string  | yes      |                                     |
+| `label`            | string  | yes      | e.g. "Mentor", "Ally", "Located in" |
+| `description`      | string  | no       |                                     |
+| `metadata`         | object  | no       | Arbitrary JSON                      |
+| `bidirectional`    | boolean | no       | Default false                       |
 
 #### `GET /projects/:projectSlug/relationships` - Built
 
-| Query Param | Type | Notes |
-| ----------- | ---- | ----- |
-| `entity` | string | Filter by entity slug |
+| Query Param | Type   | Notes                 |
+| ----------- | ------ | --------------------- |
+| `entity`    | string | Filter by entity slug |
 
 #### `GET /projects/:projectSlug/relationships/:id` - Built
 
 #### `PATCH /projects/:projectSlug/relationships/:id` - Built
 
-| Field | Type | Notes |
-| ----- | ---- | ----- |
-| `label` | string | |
-| `description` | string or null | |
-| `metadata` | object | |
-| `bidirectional` | boolean | |
+| Field           | Type           | Notes |
+| --------------- | -------------- | ----- |
+| `label`         | string         |       |
+| `description`   | string or null |       |
+| `metadata`      | object         |       |
+| `bidirectional` | boolean        |       |
 
 #### `DELETE /projects/:projectSlug/relationships/:id` - Built
 
@@ -352,10 +354,10 @@ Create a relationship between two entities.
 
 #### `POST /projects/:projectSlug/tags` - Built
 
-| Field | Type | Required | Validation |
-| ----- | ---- | -------- | ---------- |
-| `name` | string | yes | 1-50 chars, unique per project |
-| `color` | string | no | Hex color code |
+| Field   | Type   | Required | Validation                     |
+| ------- | ------ | -------- | ------------------------------ |
+| `name`  | string | yes      | 1-50 chars, unique per project |
+| `color` | string | no       | Hex color code                 |
 
 #### `GET /projects/:projectSlug/tags` - Built
 
@@ -377,26 +379,26 @@ Create a relationship between two entities.
 
 Create a timeline event.
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `name` | string | yes | |
-| `date` | string | yes | Human-readable label, e.g. "19 BBY", "March 1945" |
-| `sortOrder` | number | yes | Integer for ordering |
-| `description` | string | no | |
-| `dateValue` | number | no | Numeric value for Gantt positioning |
-| `endDate` | string | no | End date label (for duration events) |
-| `endDateValue` | number | no | End numeric value |
-| `periodStart` | string | no | |
-| `periodEnd` | string | no | |
-| `significance` | enum | no | `minor`, `moderate` (default), `major`, `critical` |
-| `eraSlug` | string | no | Assign to an era |
-| `entitySlugs` | string[] | no | Link entities to this event |
+| Field          | Type     | Required | Notes                                              |
+| -------------- | -------- | -------- | -------------------------------------------------- |
+| `name`         | string   | yes      |                                                    |
+| `date`         | string   | yes      | Human-readable label, e.g. "19 BBY", "March 1945"  |
+| `sortOrder`    | number   | yes      | Integer for ordering                               |
+| `description`  | string   | no       |                                                    |
+| `dateValue`    | number   | no       | Numeric value for Gantt positioning                |
+| `endDate`      | string   | no       | End date label (for duration events)               |
+| `endDateValue` | number   | no       | End numeric value                                  |
+| `periodStart`  | string   | no       |                                                    |
+| `periodEnd`    | string   | no       |                                                    |
+| `significance` | enum     | no       | `minor`, `moderate` (default), `major`, `critical` |
+| `eraSlug`      | string   | no       | Assign to an era                                   |
+| `entitySlugs`  | string[] | no       | Link entities to this event                        |
 
 #### `GET /projects/:projectSlug/timeline` - Built
 
-| Query Param | Type | Notes |
-| ----------- | ---- | ----- |
-| `entity` | string | Filter by entity slug |
+| Query Param    | Type   | Notes                        |
+| -------------- | ------ | ---------------------------- |
+| `entity`       | string | Filter by entity slug        |
 | `significance` | string | Filter by significance level |
 
 #### `GET /projects/:projectSlug/timeline/:id` - Built
@@ -417,14 +419,14 @@ Same fields as create, all optional.
 
 #### `POST /projects/:projectSlug/timeline/eras` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `name` | string | yes | 1-100 chars |
-| `description` | string | no | |
-| `color` | string | no | Hex color, used as Gantt band background |
-| `startDate` | number | yes | Numeric boundary |
-| `endDate` | number | yes | Numeric boundary |
-| `sortOrder` | number | no | |
+| Field         | Type   | Required | Notes                                    |
+| ------------- | ------ | -------- | ---------------------------------------- |
+| `name`        | string | yes      | 1-100 chars                              |
+| `description` | string | no       |                                          |
+| `color`       | string | no       | Hex color, used as Gantt band background |
+| `startDate`   | number | yes      | Numeric boundary                         |
+| `endDate`     | number | yes      | Numeric boundary                         |
+| `sortOrder`   | number | no       |                                          |
 
 #### `GET /projects/:projectSlug/timeline/eras` - Built
 
@@ -444,21 +446,21 @@ Same fields as create, all optional.
 
 #### `POST /projects/:projectSlug/lore` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `title` | string | yes | Min 1 char |
-| `content` | string | yes | Markdown. Min 1 char |
-| `category` | string | no | Grouping label |
-| `entitySlugs` | string[] | no | Link entities to this article |
-| `tags` | string[] | no | Tag names |
+| Field         | Type     | Required | Notes                         |
+| ------------- | -------- | -------- | ----------------------------- |
+| `title`       | string   | yes      | Min 1 char                    |
+| `content`     | string   | yes      | Markdown. Min 1 char          |
+| `category`    | string   | no       | Grouping label                |
+| `entitySlugs` | string[] | no       | Link entities to this article |
+| `tags`        | string[] | no       | Tag names                     |
 
 #### `GET /projects/:projectSlug/lore` - Built
 
-| Query Param | Type | Notes |
-| ----------- | ---- | ----- |
-| `q` | string | Full-text search |
-| `category` | string | Filter by category |
-| `entity` | string | Filter by linked entity |
+| Query Param | Type   | Notes                   |
+| ----------- | ------ | ----------------------- |
+| `q`         | string | Full-text search        |
+| `category`  | string | Filter by category      |
+| `entity`    | string | Filter by linked entity |
 
 #### `GET /projects/:projectSlug/lore/:slug` - Built
 
@@ -504,19 +506,19 @@ Get the project's style guide.
 
 Create or update the style guide. Idempotent - creates if it doesn't exist, updates if it does. Only provided fields are updated.
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `overview` | string | no | High-level style description |
-| `voice` | string | no | Narrative voice |
-| `tone` | string | no | Emotional register |
-| `pov` | string | no | POV conventions |
-| `tense` | string | no | Past/present tense |
-| `pacing` | string | no | Pacing guidelines |
-| `dialogue` | string | no | Dialogue conventions |
-| `vocabulary` | string | no | Word choice, dialect, register |
-| `proseRules` | string | no | Do's and don'ts |
-| `examples` | string | no | Example passages |
-| `notes` | string | no | Anything else |
+| Field        | Type   | Required | Notes                          |
+| ------------ | ------ | -------- | ------------------------------ |
+| `overview`   | string | no       | High-level style description   |
+| `voice`      | string | no       | Narrative voice                |
+| `tone`       | string | no       | Emotional register             |
+| `pov`        | string | no       | POV conventions                |
+| `tense`      | string | no       | Past/present tense             |
+| `pacing`     | string | no       | Pacing guidelines              |
+| `dialogue`   | string | no       | Dialogue conventions           |
+| `vocabulary` | string | no       | Word choice, dialect, register |
+| `proseRules` | string | no       | Do's and don'ts                |
+| `examples`   | string | no       | Example passages               |
+| `notes`      | string | no       | Anything else                  |
 
 ---
 
@@ -528,12 +530,12 @@ Create or update the style guide. Idempotent - creates if it doesn't exist, upda
 
 ##### `POST /projects/:projectSlug/storyboard/plotlines` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `name` | string | yes | Min 1 char |
-| `description` | string | no | |
-| `thematicStatement` | string | no | The theme this arc explores |
-| `parentPlotlineSlug` | string | no | For subplot hierarchy |
+| Field                | Type   | Required | Notes                       |
+| -------------------- | ------ | -------- | --------------------------- |
+| `name`               | string | yes      | Min 1 char                  |
+| `description`        | string | no       |                             |
+| `thematicStatement`  | string | no       | The theme this arc explores |
+| `parentPlotlineSlug` | string | no       | For subplot hierarchy       |
 
 ##### `GET /projects/:projectSlug/storyboard/plotlines` - Built
 
@@ -541,11 +543,11 @@ Create or update the style guide. Idempotent - creates if it doesn't exist, upda
 
 ##### `PATCH /projects/:projectSlug/storyboard/plotlines/:slug` - Built
 
-| Field | Type | Notes |
-| ----- | ---- | ----- |
-| `name` | string | 1-100 chars |
-| `description` | string | |
-| `thematicStatement` | string | |
+| Field               | Type   | Notes       |
+| ------------------- | ------ | ----------- |
+| `name`              | string | 1-100 chars |
+| `description`       | string |             |
+| `thematicStatement` | string |             |
 
 ##### `DELETE /projects/:projectSlug/storyboard/plotlines/:slug` - Built
 
@@ -555,15 +557,15 @@ Create or update the style guide. Idempotent - creates if it doesn't exist, upda
 
 ##### `POST /projects/:projectSlug/storyboard/plotlines/:plotlineSlug/points` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `title` | string | yes | |
-| `sequenceNumber` | number | yes | Order within plotline |
-| `description` | string | no | |
-| `label` | string | no | e.g. "Inciting Incident", "Climax" |
-| `sceneId` | string | no | Link to a scene |
-| `timelineEventId` | string | no | Link to a timeline event |
-| `entitySlug` | string | no | Main character/entity |
+| Field             | Type   | Required | Notes                              |
+| ----------------- | ------ | -------- | ---------------------------------- |
+| `title`           | string | yes      |                                    |
+| `sequenceNumber`  | number | yes      | Order within plotline              |
+| `description`     | string | no       |                                    |
+| `label`           | string | no       | e.g. "Inciting Incident", "Climax" |
+| `sceneId`         | string | no       | Link to a scene                    |
+| `timelineEventId` | string | no       | Link to a timeline event           |
+| `entitySlug`      | string | no       | Main character/entity              |
 
 ##### `PATCH /projects/:projectSlug/storyboard/points/:id` - Built
 
@@ -577,13 +579,13 @@ Same fields, all optional. Nullable fields accept `null` to clear.
 
 ##### `POST /projects/:projectSlug/storyboard/works` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `title` | string | yes | Min 1 char |
-| `chronologicalOrder` | number | yes | In-world order |
-| `releaseOrder` | number | yes | Publication order |
-| `synopsis` | string | no | |
-| `status` | enum | no | `concept` (default), `outlining`, `drafting`, `revision`, `complete` |
+| Field                | Type   | Required | Notes                                                                |
+| -------------------- | ------ | -------- | -------------------------------------------------------------------- |
+| `title`              | string | yes      | Min 1 char                                                           |
+| `chronologicalOrder` | number | yes      | In-world order                                                       |
+| `releaseOrder`       | number | yes      | Publication order                                                    |
+| `synopsis`           | string | no       |                                                                      |
+| `status`             | enum   | no       | `concept` (default), `outlining`, `drafting`, `revision`, `complete` |
 
 ##### `GET /projects/:projectSlug/storyboard/works` - Built
 
@@ -593,11 +595,11 @@ Returns work with chapters array.
 
 ##### `PATCH /projects/:projectSlug/storyboard/works/:slug` - Built
 
-| Field | Type | Notes |
-| ----- | ---- | ----- |
-| `title` | string | 1-200 chars |
-| `synopsis` | string | |
-| `status` | enum | `concept`, `outlining`, `drafting`, `revision`, `complete` |
+| Field      | Type   | Notes                                                      |
+| ---------- | ------ | ---------------------------------------------------------- |
+| `title`    | string | 1-200 chars                                                |
+| `synopsis` | string |                                                            |
+| `status`   | enum   | `concept`, `outlining`, `drafting`, `revision`, `complete` |
 
 ##### `DELETE /projects/:projectSlug/storyboard/works/:slug` - Built
 
@@ -607,11 +609,11 @@ Returns work with chapters array.
 
 ##### `POST /projects/:projectSlug/storyboard/works/:workSlug/chapters` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `title` | string | yes | Min 1 char |
-| `sequenceNumber` | number | yes | Order within work |
-| `notes` | string | no | Author notes |
+| Field            | Type   | Required | Notes             |
+| ---------------- | ------ | -------- | ----------------- |
+| `title`          | string | yes      | Min 1 char        |
+| `sequenceNumber` | number | yes      | Order within work |
+| `notes`          | string | no       | Author notes      |
 
 ##### `PATCH /projects/:projectSlug/storyboard/chapters/:id` - Built
 
@@ -623,22 +625,22 @@ Returns work with chapters array.
 
 ##### `POST /projects/:projectSlug/storyboard/scenes` - Built
 
-| Field | Type | Required | Notes |
-| ----- | ---- | -------- | ----- |
-| `chapterId` | string | yes | |
-| `sequenceNumber` | number | yes | Order within chapter |
-| `title` | string | no | |
-| `description` | string | no | What happens |
-| `plotlineSlug` | string | no | Which arc this scene belongs to |
-| `povCharacterSlug` | string | no | POV character |
-| `locationSlug` | string | no | Where it takes place |
-| `timelineEventId` | string | no | When it happens |
+| Field              | Type   | Required | Notes                           |
+| ------------------ | ------ | -------- | ------------------------------- |
+| `chapterId`        | string | yes      |                                 |
+| `sequenceNumber`   | number | yes      | Order within chapter            |
+| `title`            | string | no       |                                 |
+| `description`      | string | no       | What happens                    |
+| `plotlineSlug`     | string | no       | Which arc this scene belongs to |
+| `povCharacterSlug` | string | no       | POV character                   |
+| `locationSlug`     | string | no       | Where it takes place            |
+| `timelineEventId`  | string | no       | When it happens                 |
 
 ##### `GET /projects/:projectSlug/storyboard/scenes` - Built
 
-| Query Param | Type | Required | Notes |
-| ----------- | ---- | -------- | ----- |
-| `chapterId` | string | yes | Filter by chapter |
+| Query Param | Type   | Required | Notes             |
+| ----------- | ------ | -------- | ----------------- |
+| `chapterId` | string | yes      | Filter by chapter |
 
 ##### `PATCH /projects/:projectSlug/storyboard/scenes/:id` - Built
 
@@ -696,11 +698,11 @@ Returns `{ plotlines: [...], works: [...] }`.
 
 Authentication required via the same session cookie or bearer token.
 
-| Event | Direction | Description | Status |
-| ----- | --------- | ----------- | ------ |
-| `entity:updated` | Server -> Client | An entity was modified | Planned |
-| `entity:deleted` | Server -> Client | An entity was deleted | Planned |
-| `storyboard:updated` | Server -> Client | A storyboard scene was modified | Planned |
+| Event                  | Direction        | Description                               | Status  |
+| ---------------------- | ---------------- | ----------------------------------------- | ------- |
+| `entity:updated`       | Server -> Client | An entity was modified                    | Planned |
+| `entity:deleted`       | Server -> Client | An entity was deleted                     | Planned |
+| `storyboard:updated`   | Server -> Client | A storyboard scene was modified           | Planned |
 | `relationship:updated` | Server -> Client | A relationship was added/modified/removed | Planned |
 
 ---
@@ -718,7 +720,7 @@ The MCP server exposes Loreum's worldstate to AI assistants via the [Model Conte
       "command": "node",
       "args": ["path/to/apps/mcp/dist/index.js"],
       "env": {
-        "MCP_API_BASE_URL": "http://localhost:3021/api/v1",
+        "MCP_API_BASE_URL": "http://localhost:3021/v1",
         "MCP_API_TOKEN": "your-bearer-token"
       }
     }
@@ -728,10 +730,10 @@ The MCP server exposes Loreum's worldstate to AI assistants via the [Model Conte
 
 ### Environment Variables
 
-| Variable | Required | Default | Notes |
-| -------- | -------- | ------- | ----- |
-| `MCP_API_BASE_URL` | no | `http://localhost:3021/api/v1` | Loreum API base URL |
-| `MCP_API_TOKEN` | no | - | Bearer token for authentication |
+| Variable           | Required | Default                    | Notes                           |
+| ------------------ | -------- | -------------------------- | ------------------------------- |
+| `MCP_API_BASE_URL` | no       | `http://localhost:3021/v1` | Loreum API base URL             |
+| `MCP_API_TOKEN`    | no       | -                          | Bearer token for authentication |
 
 ### Resources
 
@@ -747,12 +749,12 @@ The MCP server exposes Loreum's worldstate to AI assistants via the [Model Conte
 
 Search across all content in a project.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `query` | string | yes | Search text |
-| `types` | string[] | no | Filter: `entity`, `lore`, `scene`, `timeline` |
-| `limit` | number | no | Max results |
+| Parameter     | Type     | Required | Notes                                         |
+| ------------- | -------- | -------- | --------------------------------------------- |
+| `projectSlug` | string   | yes      |                                               |
+| `query`       | string   | yes      | Search text                                   |
+| `types`       | string[] | no       | Filter: `entity`, `lore`, `scene`, `timeline` |
+| `limit`       | number   | no       | Max results                                   |
 
 **API call:** `GET /projects/{projectSlug}/search?q={query}&types={types}&limit={limit}`
 
@@ -760,11 +762,11 @@ Search across all content in a project.
 
 Retrieve a specific entity with relationships and linked content.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `entitySlug` | string | yes | |
-| `include` | string[] | no | `relationships`, `lore`, `timeline`, `scenes` |
+| Parameter     | Type     | Required | Notes                                         |
+| ------------- | -------- | -------- | --------------------------------------------- |
+| `projectSlug` | string   | yes      |                                               |
+| `entitySlug`  | string   | yes      |                                               |
+| `include`     | string[] | no       | `relationships`, `lore`, `timeline`, `scenes` |
 
 **API call:** `GET /projects/{projectSlug}/entities/{entitySlug}?include={include}`
 
@@ -772,10 +774,10 @@ Retrieve a specific entity with relationships and linked content.
 
 Get the full aggregated lore page for an entity - everything connected to it.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `entitySlug` | string | yes | |
+| Parameter     | Type   | Required | Notes |
+| ------------- | ------ | -------- | ----- |
+| `projectSlug` | string | yes      |       |
+| `entitySlug`  | string | yes      |       |
 
 **API call:** `GET /projects/{projectSlug}/entities/{entitySlug}/hub`
 
@@ -783,12 +785,12 @@ Get the full aggregated lore page for an entity - everything connected to it.
 
 List and filter entities in a project.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `type` | string | no | Entity type filter |
-| `tag` | string | no | Tag name filter |
-| `q` | string | no | Search query |
+| Parameter     | Type   | Required | Notes              |
+| ------------- | ------ | -------- | ------------------ |
+| `projectSlug` | string | yes      |                    |
+| `type`        | string | no       | Entity type filter |
+| `tag`         | string | no       | Tag name filter    |
+| `q`           | string | no       | Search query       |
 
 **API call:** `GET /projects/{projectSlug}/entities?type={type}&tag={tag}&q={q}`
 
@@ -796,11 +798,11 @@ List and filter entities in a project.
 
 Get narrative structure: plotlines, works, chapters, scenes.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `bookSlug` | string | no | Filter to specific work |
-| `detail` | enum | no | `outline` or `full` |
+| Parameter     | Type   | Required | Notes                   |
+| ------------- | ------ | -------- | ----------------------- |
+| `projectSlug` | string | yes      |                         |
+| `bookSlug`    | string | no       | Filter to specific work |
+| `detail`      | enum   | no       | `outline` or `full`     |
 
 **API call:** `GET /projects/{projectSlug}/storyboard?book={bookSlug}&detail={detail}`
 
@@ -808,9 +810,9 @@ Get narrative structure: plotlines, works, chapters, scenes.
 
 List all entity types and their field schemas for a project.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
+| Parameter     | Type   | Required | Notes |
+| ------------- | ------ | -------- | ----- |
+| `projectSlug` | string | yes      |       |
 
 **API call:** `GET /projects/{projectSlug}/entity-types`
 
@@ -818,10 +820,10 @@ List all entity types and their field schemas for a project.
 
 Get the project's style guide. When writing a scene, also returns scene-level `styleNotes` and `voiceNotes` for characters present.
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `sceneId` | string | no | If provided, includes scene styleNotes and character voiceNotes for that scene |
+| Parameter     | Type   | Required | Notes                                                                          |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------ |
+| `projectSlug` | string | yes      |                                                                                |
+| `sceneId`     | string | no       | If provided, includes scene styleNotes and character voiceNotes for that scene |
 
 **API call:** `GET /projects/{projectSlug}/style-guide` (+ scene context resolution)
 
@@ -829,54 +831,54 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 
 #### `create_entity` - Built
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `type` | enum | yes | `CHARACTER`, `LOCATION`, `ORGANIZATION`, `ITEM` |
-| `name` | string | yes | |
-| `summary` | string | no | |
-| `description` | string | no | |
-| `backstory` | string | no | |
-| `secrets` | string | no | |
-| `notes` | string | no | |
-| `tags` | string[] | no | |
+| Parameter     | Type     | Required | Notes                                           |
+| ------------- | -------- | -------- | ----------------------------------------------- |
+| `projectSlug` | string   | yes      |                                                 |
+| `type`        | enum     | yes      | `CHARACTER`, `LOCATION`, `ORGANIZATION`, `ITEM` |
+| `name`        | string   | yes      |                                                 |
+| `summary`     | string   | no       |                                                 |
+| `description` | string   | no       |                                                 |
+| `backstory`   | string   | no       |                                                 |
+| `secrets`     | string   | no       |                                                 |
+| `notes`       | string   | no       |                                                 |
+| `tags`        | string[] | no       |                                                 |
 
 **API call:** `POST /projects/{projectSlug}/entities`
 
 #### `update_entity` - Built
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `entitySlug` | string | yes | |
-| `updates` | object | yes | Fields to update |
+| Parameter     | Type   | Required | Notes            |
+| ------------- | ------ | -------- | ---------------- |
+| `projectSlug` | string | yes      |                  |
+| `entitySlug`  | string | yes      |                  |
+| `updates`     | object | yes      | Fields to update |
 
 **API call:** `PATCH /projects/{projectSlug}/entities/{entitySlug}`
 
 #### `create_relationship` - Built
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `sourceEntitySlug` | string | yes | |
-| `targetEntitySlug` | string | yes | |
-| `type` | string | yes | Relationship type |
-| `label` | string | no | |
-| `metadata` | object | no | |
-| `bidirectional` | boolean | no | |
+| Parameter          | Type    | Required | Notes             |
+| ------------------ | ------- | -------- | ----------------- |
+| `projectSlug`      | string  | yes      |                   |
+| `sourceEntitySlug` | string  | yes      |                   |
+| `targetEntitySlug` | string  | yes      |                   |
+| `type`             | string  | yes      | Relationship type |
+| `label`            | string  | no       |                   |
+| `metadata`         | object  | no       |                   |
+| `bidirectional`    | boolean | no       |                   |
 
 **API call:** `POST /projects/{projectSlug}/relationships`
 
 #### `create_lore_article` - Built
 
-| Parameter | Type | Required | Notes |
-| --------- | ---- | -------- | ----- |
-| `projectSlug` | string | yes | |
-| `title` | string | yes | |
-| `content` | string | yes | Markdown |
-| `category` | string | no | |
-| `tags` | string[] | no | |
-| `entitySlugs` | string[] | no | Link to entities |
+| Parameter     | Type     | Required | Notes            |
+| ------------- | -------- | -------- | ---------------- |
+| `projectSlug` | string   | yes      |                  |
+| `title`       | string   | yes      |                  |
+| `content`     | string   | yes      | Markdown         |
+| `category`    | string   | no       |                  |
+| `tags`        | string[] | no       |                  |
+| `entitySlugs` | string[] | no       | Link to entities |
 
 **API call:** `POST /projects/{projectSlug}/lore`
 
@@ -886,31 +888,31 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 
 ### Required Environment Variables
 
-| Variable | Description |
-| -------- | ----------- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret key for JWT signing |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_CALLBACK_URL` | Google OAuth callback URL |
-| `CORS_ORIGIN` | Allowed origin for CORS |
-| `API_PORT` | API port (default: 3021) |
-| `NODE_ENV` | `production` or `development` |
+| Variable               | Description                   |
+| ---------------------- | ----------------------------- |
+| `DATABASE_URL`         | PostgreSQL connection string  |
+| `JWT_SECRET`           | Secret key for JWT signing    |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID        |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret    |
+| `GOOGLE_CALLBACK_URL`  | Google OAuth callback URL     |
+| `CORS_ORIGIN`          | Allowed origin for CORS       |
+| `API_PORT`             | API port (default: 3021)      |
+| `NODE_ENV`             | `production` or `development` |
 
 ### Optional Environment Variables
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `JWT_ACCESS_TTL` | `2h` | JWT expiration |
-| `TOKEN_ROTATION_MINUTES` | `100` | Token rotation interval |
-| `SESSION_TTL_DAYS` | `60` | Session TTL |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection |
-| `COOKIE_DOMAIN` | - | Cookie domain scope |
-| `R2_ACCOUNT_ID` | - | Cloudflare R2 account |
-| `R2_ACCESS_KEY_ID` | - | R2 access key |
-| `R2_SECRET_ACCESS_KEY` | - | R2 secret key |
-| `R2_BUCKET_NAME` | - | R2 bucket name |
-| `R2_PUBLIC_URL` | - | R2 public URL |
+| Variable                 | Default                  | Description             |
+| ------------------------ | ------------------------ | ----------------------- |
+| `JWT_ACCESS_TTL`         | `2h`                     | JWT expiration          |
+| `TOKEN_ROTATION_MINUTES` | `100`                    | Token rotation interval |
+| `SESSION_TTL_DAYS`       | `60`                     | Session TTL             |
+| `REDIS_URL`              | `redis://localhost:6379` | Redis connection        |
+| `COOKIE_DOMAIN`          | -                        | Cookie domain scope     |
+| `R2_ACCOUNT_ID`          | -                        | Cloudflare R2 account   |
+| `R2_ACCESS_KEY_ID`       | -                        | R2 access key           |
+| `R2_SECRET_ACCESS_KEY`   | -                        | R2 secret key           |
+| `R2_BUCKET_NAME`         | -                        | R2 bucket name          |
+| `R2_PUBLIC_URL`          | -                        | R2 public URL           |
 
 ---
 
@@ -918,13 +920,13 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 
 Features referenced in the MCP tools or product spec that don't have REST endpoints yet:
 
-| Gap | Notes |
-| --- | ----- |
-| `GET /projects/:slug/search` | MCP `search_project` calls this, but no dedicated search controller exists yet. Entity/lore listing with `?q=` provides partial coverage |
-| `GET /projects/:slug/entities/:slug/hub` | MCP `get_entity_hub` calls this. The standard entity GET includes connected data, but hub may need a dedicated aggregation endpoint |
-| `GET /projects/:slug/storyboard?book=&detail=` | MCP `get_storyboard` expects query params. Current storyboard endpoints are per-resource (plotlines, works, scenes separately) |
-| Style guide endpoints | `GET/PUT /projects/:slug/style-guide` - planned |
-| `Scene.styleNotes` | Field not yet in schema |
-| `Character.voiceNotes` | Field not yet in schema |
-| Pagination | No endpoints support pagination. Will be needed for projects with many entities |
-| `content` field on Scene | Exists in schema but no dedicated scene content/prose endpoint |
+| Gap                                            | Notes                                                                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /projects/:slug/search`                   | MCP `search_project` calls this, but no dedicated search controller exists yet. Entity/lore listing with `?q=` provides partial coverage |
+| `GET /projects/:slug/entities/:slug/hub`       | MCP `get_entity_hub` calls this. The standard entity GET includes connected data, but hub may need a dedicated aggregation endpoint      |
+| `GET /projects/:slug/storyboard?book=&detail=` | MCP `get_storyboard` expects query params. Current storyboard endpoints are per-resource (plotlines, works, scenes separately)           |
+| Style guide endpoints                          | `GET/PUT /projects/:slug/style-guide` - planned                                                                                          |
+| `Scene.styleNotes`                             | Field not yet in schema                                                                                                                  |
+| `Character.voiceNotes`                         | Field not yet in schema                                                                                                                  |
+| Pagination                                     | No endpoints support pagination. Will be needed for projects with many entities                                                          |
+| `content` field on Scene                       | Exists in schema but no dedicated scene content/prose endpoint                                                                           |

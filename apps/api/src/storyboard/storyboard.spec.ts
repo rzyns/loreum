@@ -31,13 +31,13 @@ describe("Storyboard (integration)", () => {
     authHeader = auth.authHeader;
 
     const proj = await request(app.getHttpServer())
-      .post("/api/v1/projects")
+      .post("/v1/projects")
       .set("Authorization", authHeader)
       .send({ name: "Story World" });
     projectSlug = proj.body.slug;
   });
 
-  const base = () => `/api/v1/projects/${projectSlug}/storyboard`;
+  const base = () => `/v1/projects/${projectSlug}/storyboard`;
 
   // -------------------------------------------------------------------------
   // Plotlines

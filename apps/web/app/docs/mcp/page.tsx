@@ -31,7 +31,8 @@ export default function McpDocsPage() {
             MCP server exposes your world data as structured tools the AI can
             call. The AI reads your characters, relationships, timeline, lore,
             and style guide. It can also propose changes (new entities,
-            relationships, articles) that land in a staging area for your review.
+            relationships, articles) that land in a staging area for your
+            review.
           </p>
         </section>
 
@@ -62,7 +63,7 @@ export default function McpDocsPage() {
       "command": "node",
       "args": ["path/to/loreum/apps/mcp/dist/index.js"],
       "env": {
-        "MCP_API_BASE_URL": "https://loreum.app/api/v1",
+        "MCP_API_BASE_URL": "https://loreum.app/v1",
         "MCP_API_TOKEN": "your-api-key"
       }
     }
@@ -70,12 +71,11 @@ export default function McpDocsPage() {
 }`}
           </pre>
           <p className="mt-2 text-xs text-muted-foreground">
-            Replace{" "}
-            <code className="rounded bg-muted px-1">your-api-key</code> with
-            the key you generated in project settings. For local development,
-            use{" "}
+            Replace <code className="rounded bg-muted px-1">your-api-key</code>{" "}
+            with the key you generated in project settings. For local
+            development, use{" "}
             <code className="rounded bg-muted px-1">
-              http://localhost:3021/api/v1
+              http://localhost:3021/v1
             </code>{" "}
             as the base URL.
           </p>
@@ -99,48 +99,88 @@ export default function McpDocsPage() {
               </thead>
               <tbody className="text-muted-foreground">
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">search_project</td>
-                  <td className="px-4 py-2">Full-text search across entities, lore, scenes, and timeline</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    search_project
+                  </td>
+                  <td className="px-4 py-2">
+                    Full-text search across entities, lore, scenes, and timeline
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">get_entity</td>
-                  <td className="px-4 py-2">Single entity with optional relationships, lore, scenes, and timeline</td>
+                  <td className="px-4 py-2">
+                    Single entity with optional relationships, lore, scenes, and
+                    timeline
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">get_entity_hub</td>
-                  <td className="px-4 py-2">Full aggregated page for an entity with all connected content</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_entity_hub
+                  </td>
+                  <td className="px-4 py-2">
+                    Full aggregated page for an entity with all connected
+                    content
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">list_entities</td>
-                  <td className="px-4 py-2">List and filter entities by type, tag, or search query</td>
+                  <td className="px-4 py-2">
+                    List and filter entities by type, tag, or search query
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">get_storyboard</td>
-                  <td className="px-4 py-2">Narrative structure: plotlines, works, chapters, scenes</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_storyboard
+                  </td>
+                  <td className="px-4 py-2">
+                    Narrative structure: plotlines, works, chapters, scenes
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">get_entity_types</td>
-                  <td className="px-4 py-2">Entity types and their field schemas</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_entity_types
+                  </td>
+                  <td className="px-4 py-2">
+                    Entity types and their field schemas
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">get_style_guide</td>
-                  <td className="px-4 py-2">Base style guide, scene overrides, and character voice notes</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_style_guide
+                  </td>
+                  <td className="px-4 py-2">
+                    Base style guide, scene overrides, and character voice notes
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">get_timeline</td>
-                  <td className="px-4 py-2">Timeline events and eras for a project</td>
+                  <td className="px-4 py-2">
+                    Timeline events and eras for a project
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">get_lore_article</td>
-                  <td className="px-4 py-2">Single lore article with linked entities</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_lore_article
+                  </td>
+                  <td className="px-4 py-2">
+                    Single lore article with linked entities
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">list_lore_articles</td>
-                  <td className="px-4 py-2">List and filter lore articles by category or tag</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    list_lore_articles
+                  </td>
+                  <td className="px-4 py-2">
+                    List and filter lore articles by category or tag
+                  </td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2 font-mono text-xs">get_relationships</td>
-                  <td className="px-4 py-2">Relationships for a specific entity</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    get_relationships
+                  </td>
+                  <td className="px-4 py-2">
+                    Relationships for a specific entity
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -167,46 +207,74 @@ export default function McpDocsPage() {
               <tbody className="text-muted-foreground">
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">create_entity</td>
-                  <td className="px-4 py-2">Create a character, location, organization, or custom item</td>
+                  <td className="px-4 py-2">
+                    Create a character, location, organization, or custom item
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">update_entity</td>
-                  <td className="px-4 py-2">Partial update to an existing entity</td>
+                  <td className="px-4 py-2">
+                    Partial update to an existing entity
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">delete_entity</td>
                   <td className="px-4 py-2">Delete an entity</td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">create_relationship</td>
-                  <td className="px-4 py-2">Create a relationship between two entities</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    create_relationship
+                  </td>
+                  <td className="px-4 py-2">
+                    Create a relationship between two entities
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">delete_relationship</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    delete_relationship
+                  </td>
                   <td className="px-4 py-2">Delete a relationship</td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">create_lore_article</td>
-                  <td className="px-4 py-2">Create a lore article linked to entities</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    create_lore_article
+                  </td>
+                  <td className="px-4 py-2">
+                    Create a lore article linked to entities
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">update_lore_article</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    update_lore_article
+                  </td>
                   <td className="px-4 py-2">Update an existing lore article</td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">delete_lore_article</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    delete_lore_article
+                  </td>
                   <td className="px-4 py-2">Delete a lore article</td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">create_timeline_event</td>
-                  <td className="px-4 py-2">Create a timeline event linked to entities</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    create_timeline_event
+                  </td>
+                  <td className="px-4 py-2">
+                    Create a timeline event linked to entities
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">update_timeline_event</td>
-                  <td className="px-4 py-2">Update an existing timeline event</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    update_timeline_event
+                  </td>
+                  <td className="px-4 py-2">
+                    Update an existing timeline event
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">delete_timeline_event</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    delete_timeline_event
+                  </td>
                   <td className="px-4 py-2">Delete a timeline event</td>
                 </tr>
                 <tr className="border-b">
@@ -215,19 +283,31 @@ export default function McpDocsPage() {
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">update_scene</td>
-                  <td className="px-4 py-2">Update scene content, style notes, or characters</td>
+                  <td className="px-4 py-2">
+                    Update scene content, style notes, or characters
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">create_plot_point</td>
-                  <td className="px-4 py-2">Create a plot point on a plotline</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    create_plot_point
+                  </td>
+                  <td className="px-4 py-2">
+                    Create a plot point on a plotline
+                  </td>
                 </tr>
                 <tr className="border-b">
-                  <td className="px-4 py-2 font-mono text-xs">update_plot_point</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    update_plot_point
+                  </td>
                   <td className="px-4 py-2">Update a plot point</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2 font-mono text-xs">set_style_guide</td>
-                  <td className="px-4 py-2">Create or update the project style guide</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    set_style_guide
+                  </td>
+                  <td className="px-4 py-2">
+                    Create or update the project style guide
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -261,7 +341,10 @@ export default function McpDocsPage() {
             </li>
             <li>&quot;What relationships does Luke Skywalker have?&quot;</li>
             <li>&quot;Create a new location called the Iron Citadel.&quot;</li>
-            <li>&quot;Write a lore article about the history of the Jedi Order.&quot;</li>
+            <li>
+              &quot;Write a lore article about the history of the Jedi
+              Order.&quot;
+            </li>
             <li>&quot;What does my style guide say about dialogue?&quot;</li>
             <li>&quot;Add a timeline event for the Battle of Yavin.&quot;</li>
             <li>&quot;Is there anything contradictory in my timeline?&quot;</li>

@@ -31,7 +31,7 @@ describe("Timeline (integration)", () => {
     authHeader = auth.authHeader;
 
     const proj = await request(app.getHttpServer())
-      .post("/api/v1/projects")
+      .post("/v1/projects")
       .set("Authorization", authHeader)
       .send({ name: "Timeline World" });
     projectSlug = proj.body.slug;
@@ -41,7 +41,7 @@ describe("Timeline (integration)", () => {
   // Events
   // -------------------------------------------------------------------------
 
-  const eventsBase = () => `/api/v1/projects/${projectSlug}/timeline`;
+  const eventsBase = () => `/v1/projects/${projectSlug}/timeline`;
 
   it("creates a timeline event", async () => {
     const res = await request(app.getHttpServer())
@@ -95,7 +95,7 @@ describe("Timeline (integration)", () => {
   // Eras
   // -------------------------------------------------------------------------
 
-  const erasBase = () => `/api/v1/projects/${projectSlug}/timeline/eras`;
+  const erasBase = () => `/v1/projects/${projectSlug}/timeline/eras`;
 
   it("creates an era", async () => {
     const res = await request(app.getHttpServer())

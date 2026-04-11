@@ -20,7 +20,7 @@ export async function createTestApp(): Promise<{
 
   const app = module.createNestApplication();
 
-  app.setGlobalPrefix("api/v1");
+  app.setGlobalPrefix("v1");
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
@@ -55,7 +55,8 @@ export async function createAuthenticatedUser(
     data: {
       email,
       name,
-      username: email.split("@")[0] + "-" + Math.random().toString(36).slice(2, 6),
+      username:
+        email.split("@")[0] + "-" + Math.random().toString(36).slice(2, 6),
       profile: { create: {} },
       preferences: { create: {} },
     },

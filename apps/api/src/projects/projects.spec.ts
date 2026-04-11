@@ -36,10 +36,10 @@ describe("Projects (integration)", () => {
   // CREATE
   // -------------------------------------------------------------------------
 
-  describe("POST /api/v1/projects", () => {
+  describe("POST /v1/projects", () => {
     it("creates a project and returns it", async () => {
       const res = await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Middle Earth", description: "Tolkien's world" })
         .expect(201);
@@ -55,14 +55,14 @@ describe("Projects (integration)", () => {
 
     it("returns 401 without auth", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .send({ name: "No Auth" })
         .expect(401);
     });
 
     it("returns 400 for missing name", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ description: "no name" })
         .expect(400);
@@ -70,13 +70,13 @@ describe("Projects (integration)", () => {
 
     it("generates unique slugs for duplicate names", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Duplicate" })
         .expect(201);
 
       const res = await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Duplicate" })
         .expect(201);
@@ -89,14 +89,14 @@ describe("Projects (integration)", () => {
   // READ
   // -------------------------------------------------------------------------
 
-  describe("GET /api/v1/projects", () => {
+  describe("GET /v1/projects", () => {
     it("lists only the user's projects", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Project A" });
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Project B" });
 
@@ -106,7 +106,7 @@ describe("Projects (integration)", () => {
       });
 
       const res = await request(app.getHttpServer())
-        .get("/api/v1/projects")
+        .get("/v1/projects")
         .set("Authorization", other.authHeader)
         .expect(200);
 
@@ -114,15 +114,15 @@ describe("Projects (integration)", () => {
     });
   });
 
-  describe("GET /api/v1/projects/:slug", () => {
+  describe("GET /v1/projects/:slug", () => {
     it("returns a project by slug", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Test Project" });
 
       const res = await request(app.getHttpServer())
-        .get("/api/v1/projects/test-project")
+        .get("/v1/projects/test-project")
         .set("Authorization", authHeader)
         .expect(200);
 
@@ -131,14 +131,14 @@ describe("Projects (integration)", () => {
 
     it("returns 404 for non-existent project", async () => {
       await request(app.getHttpServer())
-        .get("/api/v1/projects/does-not-exist")
+        .get("/v1/projects/does-not-exist")
         .set("Authorization", authHeader)
         .expect(404);
     });
 
     it("returns 403 for another user's project", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Private" });
 
@@ -147,7 +147,7 @@ describe("Projects (integration)", () => {
       });
 
       await request(app.getHttpServer())
-        .get("/api/v1/projects/private")
+        .get("/v1/projects/private")
         .set("Authorization", other.authHeader)
         .expect(403);
     });
@@ -157,15 +157,15 @@ describe("Projects (integration)", () => {
   // UPDATE
   // -------------------------------------------------------------------------
 
-  describe("PATCH /api/v1/projects/:slug", () => {
+  describe("PATCH /v1/projects/:slug", () => {
     it("updates project name and regenerates slug", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Old Name" });
 
       const res = await request(app.getHttpServer())
-        .patch("/api/v1/projects/old-name")
+        .patch("/v1/projects/old-name")
         .set("Authorization", authHeader)
         .send({ name: "New Name" })
         .expect(200);
@@ -176,12 +176,12 @@ describe("Projects (integration)", () => {
 
     it("updates description without changing slug", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "Stable Slug" });
 
       const res = await request(app.getHttpServer())
-        .patch("/api/v1/projects/stable-slug")
+        .patch("/v1/projects/stable-slug")
         .set("Authorization", authHeader)
         .send({ description: "Updated description" })
         .expect(200);
@@ -195,20 +195,20 @@ describe("Projects (integration)", () => {
   // DELETE
   // -------------------------------------------------------------------------
 
-  describe("DELETE /api/v1/projects/:slug", () => {
+  describe("DELETE /v1/projects/:slug", () => {
     it("deletes a project", async () => {
       await request(app.getHttpServer())
-        .post("/api/v1/projects")
+        .post("/v1/projects")
         .set("Authorization", authHeader)
         .send({ name: "To Delete" });
 
       await request(app.getHttpServer())
-        .delete("/api/v1/projects/to-delete")
+        .delete("/v1/projects/to-delete")
         .set("Authorization", authHeader)
         .expect(204);
 
       await request(app.getHttpServer())
-        .get("/api/v1/projects/to-delete")
+        .get("/v1/projects/to-delete")
         .set("Authorization", authHeader)
         .expect(404);
     });

@@ -85,8 +85,8 @@ export default function AiWorldbuildingMcpPost() {
           Every write operation from the MCP server creates a pending change
           instead of modifying your world directly. You review these changes
           from a dedicated staging area in the web UI. Updates show a
-          side-by-side diff. Creates show a full preview. Deletes show what
-          will be removed and what references it.
+          side-by-side diff. Creates show a full preview. Deletes show what will
+          be removed and what references it.
         </p>
         <p>
           Changes from a single AI session are grouped together, so you can
@@ -106,7 +106,7 @@ export default function AiWorldbuildingMcpPost() {
       "command": "node",
       "args": ["path/to/loreum/apps/mcp/dist/index.js"],
       "env": {
-        "MCP_API_BASE_URL": "https://loreum.app/api/v1",
+        "MCP_API_BASE_URL": "https://loreum.app/v1",
         "MCP_API_TOKEN": "your-api-key"
       }
     }

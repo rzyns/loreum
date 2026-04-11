@@ -2,8 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const API_BASE_URL =
-  process.env.MCP_API_BASE_URL || "http://localhost:3021/api/v1";
+const API_BASE_URL = process.env.MCP_API_BASE_URL || "http://localhost:3021/v1";
 
 const server = new McpServer({
   name: "loreum",

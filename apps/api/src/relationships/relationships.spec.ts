@@ -31,23 +31,23 @@ describe("Relationships (integration)", () => {
     authHeader = auth.authHeader;
 
     const proj = await request(app.getHttpServer())
-      .post("/api/v1/projects")
+      .post("/v1/projects")
       .set("Authorization", authHeader)
       .send({ name: "Rel World" });
     projectSlug = proj.body.slug;
 
     // Create two entities to relate
     await request(app.getHttpServer())
-      .post(`/api/v1/projects/${projectSlug}/entities`)
+      .post(`/v1/projects/${projectSlug}/entities`)
       .set("Authorization", authHeader)
       .send({ type: "CHARACTER", name: "Gandalf" });
     await request(app.getHttpServer())
-      .post(`/api/v1/projects/${projectSlug}/entities`)
+      .post(`/v1/projects/${projectSlug}/entities`)
       .set("Authorization", authHeader)
       .send({ type: "CHARACTER", name: "Frodo" });
   });
 
-  const base = () => `/api/v1/projects/${projectSlug}/relationships`;
+  const base = () => `/v1/projects/${projectSlug}/relationships`;
 
   it("creates a relationship between entities", async () => {
     const res = await request(app.getHttpServer())
