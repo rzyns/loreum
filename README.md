@@ -5,8 +5,8 @@
 <h1 align="center">Loreum</h1>
 
 <p align="center">
-  The worldbuilding platform that makes AI useful.<br/>
-  Structure your fictional universe. Let AI read all of it.
+  Every character, faction, and timeline in one searchable place.<br/>
+  The worldbuilding platform that makes AI useful.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/loreum-app/loreum/actions"><img src="https://github.com/loreum-app/loreum/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License" /></a>
-  <a href="https://discord.gg/A2s5gZ8rcz"><img src="https://img.shields.io/discord/000000000000000000?color=5865F2&label=discord" alt="Discord" /></a>
+  <a href="https://discord.gg/A2s5gZ8rcz"><img src="https://img.shields.io/discord/1492392236867125422?color=5865F2&label=discord" alt="Discord" /></a>
 </p>
 
 ---
