@@ -52,6 +52,8 @@ test("registerTools registers all existing MCP tools and resources", () => {
   registerTools(server, api);
 
   assert.deepEqual(Array.from(registeredTools.keys()), [
+    "list_projects",
+    "get_project",
     "search_project",
     "get_entity",
     "list_entities",
@@ -65,6 +67,42 @@ test("registerTools registers all existing MCP tools and resources", () => {
   assert.deepEqual(Array.from(registeredResources.keys()), [
     "project_overview",
   ]);
+});
+
+test("registerTools wires list_projects through injectable API client", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = [{ slug: "demo", name: "Demo" }];
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const listProjects = registeredTools.get("list_projects");
+  assert.ok(listProjects, "list_projects handler should be registered");
+
+  const result = await listProjects({});
+
+  assert.deepEqual(apiCalls, [{ path: "/projects", options: undefined }]);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }],
+  });
+});
+
+test("registerTools wires get_project through injectable API client", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = { slug: "demo", name: "Demo" };
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const getProject = registeredTools.get("get_project");
+  assert.ok(getProject, "get_project handler should be registered");
+
+  const result = await getProject({ projectSlug: "demo" });
+
+  assert.deepEqual(apiCalls, [{ path: "/projects/demo", options: undefined }]);
+  assert.deepEqual(result, {
+    content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }],
+  });
 });
 
 test("registerTools wires search_project through injectable API client", async () => {

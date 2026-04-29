@@ -15,6 +15,30 @@ export function jsonContent(value: unknown) {
 
 export function registerTools(server: ToolServer, api: ApiClient) {
   server.registerTool(
+    "list_projects",
+    {
+      description: "List all projects",
+      inputSchema: {},
+    },
+    async () => {
+      const projects = await api("/projects");
+      return jsonContent(projects);
+    },
+  );
+
+  server.registerTool(
+    "get_project",
+    {
+      description: "Get a project by slug",
+      inputSchema: { projectSlug: z.string() },
+    },
+    async ({ projectSlug }) => {
+      const project = await api(`/projects/${projectSlug}`);
+      return jsonContent(project);
+    },
+  );
+
+  server.registerTool(
     "search_project",
     {
       description: "Search across all content in a project",
