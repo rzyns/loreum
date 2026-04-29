@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "check:env-examples": "node scripts/check-env-examples.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

@@ -68,6 +68,8 @@ AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant
 
 ## Quick Start
 
+For detailed local setup, troubleshooting, and smoke checks, see [Local Development](docs/LOCAL_DEV.md).
+
 ```sh
 # Clone the repo
 git clone https://github.com/loreum-app/loreum.git
@@ -79,10 +81,14 @@ pnpm install
 # Copy environment files
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
+cp apps/web/.env.example apps/web/.env.local
 
-# Start Postgres + Redis
+# Verify environment examples cover required keys
+pnpm check:env-examples
+
+# Start Postgres + Redis (+ OpenSearch for future full-text search)
 docker compose up -d
+docker compose ps
 
 # Generate Prisma client, run migrations, and seed demo data
 pnpm --filter api db:generate
@@ -129,6 +135,7 @@ packages/
   typescript-config/
   eslint-config/
 docs/
+  LOCAL_DEV.md          Local development runbook and smoke checks
   PRODUCT_SPEC.md         Full feature specification
   SYSTEM_ARCHITECTURE.md  Architecture diagrams
   API_REFERENCE.md        REST, WebSocket, MCP docs
@@ -142,6 +149,7 @@ docs/
 
 | Document                                           | Description                                   |
 | -------------------------------------------------- | --------------------------------------------- |
+| [Local Development](docs/LOCAL_DEV.md)             | Local setup, commands, and smoke checks       |
 | [Product Spec](docs/PRODUCT_SPEC.md)               | Complete feature specification with tiers     |
 | [System Architecture](docs/SYSTEM_ARCHITECTURE.md) | Component, data flow, and deployment diagrams |
 | [API Reference](docs/API_REFERENCE.md)             | REST, WebSocket, and MCP tool documentation   |
