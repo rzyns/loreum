@@ -13,6 +13,18 @@ export function jsonContent(value: unknown) {
   };
 }
 
+function optionalQuery(params: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  return query.toString() ? `?${query}` : "";
+}
+
+function pathSegment(value: string) {
+  return encodeURIComponent(value);
+}
+
 export function registerTools(server: ToolServer, api: ApiClient) {
   server.registerTool(
     "list_projects",
@@ -103,6 +115,133 @@ export function registerTools(server: ToolServer, api: ApiClient) {
 
       const entities = await api(`/projects/${projectSlug}/entities${query}`);
       return jsonContent(entities);
+    },
+  );
+
+  server.registerTool(
+    "list_lore_articles",
+    {
+      description: "List and filter lore articles in a project",
+      inputSchema: {
+        projectSlug: z.string(),
+        q: z.string().optional(),
+        category: z.string().optional(),
+        entity: z.string().optional(),
+      },
+    },
+    async ({ projectSlug, q, category, entity }) => {
+      const query = optionalQuery({ q, category, entity });
+      const articles = await api(
+        `/projects/${pathSegment(projectSlug)}/lore${query}`,
+      );
+      return jsonContent(articles);
+    },
+  );
+
+  server.registerTool(
+    "get_lore_article",
+    {
+      description: "Get a lore article by slug",
+      inputSchema: { projectSlug: z.string(), articleSlug: z.string() },
+    },
+    async ({ projectSlug, articleSlug }) => {
+      const article = await api(
+        `/projects/${pathSegment(projectSlug)}/lore/${pathSegment(articleSlug)}`,
+      );
+      return jsonContent(article);
+    },
+  );
+
+  server.registerTool(
+    "list_timeline_events",
+    {
+      description: "List and filter timeline events in a project",
+      inputSchema: {
+        projectSlug: z.string(),
+        entity: z.string().optional(),
+        significance: z.string().optional(),
+      },
+    },
+    async ({ projectSlug, entity, significance }) => {
+      const query = optionalQuery({ entity, significance });
+      const events = await api(
+        `/projects/${pathSegment(projectSlug)}/timeline${query}`,
+      );
+      return jsonContent(events);
+    },
+  );
+
+  server.registerTool(
+    "get_timeline_event",
+    {
+      description: "Get a timeline event by ID",
+      inputSchema: { projectSlug: z.string(), eventId: z.string() },
+    },
+    async ({ projectSlug, eventId }) => {
+      const event = await api(
+        `/projects/${pathSegment(projectSlug)}/timeline/${pathSegment(eventId)}`,
+      );
+      return jsonContent(event);
+    },
+  );
+
+  server.registerTool(
+    "list_relationships",
+    {
+      description: "List and filter relationships in a project",
+      inputSchema: {
+        projectSlug: z.string(),
+        entity: z.string().optional(),
+      },
+    },
+    async ({ projectSlug, entity }) => {
+      const query = optionalQuery({ entity });
+      const relationships = await api(
+        `/projects/${pathSegment(projectSlug)}/relationships${query}`,
+      );
+      return jsonContent(relationships);
+    },
+  );
+
+  server.registerTool(
+    "get_relationship",
+    {
+      description: "Get a relationship by ID",
+      inputSchema: { projectSlug: z.string(), relationshipId: z.string() },
+    },
+    async ({ projectSlug, relationshipId }) => {
+      const relationship = await api(
+        `/projects/${pathSegment(projectSlug)}/relationships/${pathSegment(
+          relationshipId,
+        )}`,
+      );
+      return jsonContent(relationship);
+    },
+  );
+
+  server.registerTool(
+    "list_tags",
+    {
+      description: "List tags in a project",
+      inputSchema: { projectSlug: z.string() },
+    },
+    async ({ projectSlug }) => {
+      const tags = await api(`/projects/${pathSegment(projectSlug)}/tags`);
+      return jsonContent(tags);
+    },
+  );
+
+  server.registerTool(
+    "get_tag",
+    {
+      description: "Get a tag by name",
+      inputSchema: { projectSlug: z.string(), tagName: z.string() },
+    },
+    async ({ projectSlug, tagName }) => {
+      const tag = await api(
+        `/projects/${pathSegment(projectSlug)}/tags/${pathSegment(tagName)}`,
+      );
+      return jsonContent(tag);
     },
   );
 
