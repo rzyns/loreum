@@ -43,15 +43,16 @@ export class ProjectsController {
 
   @Get(":slug/search")
   @ApiOperation({
-    summary: "Search across project content (stub — OpenSearch pending)",
+    summary: "Search across basic project content",
   })
   async search(
     @Param("slug") slug: string,
     @User() user: AuthUser,
-    @Query("q") q?: string,
+    @Query("q") q?: string | string[],
+    @Query("types") types?: string | string[],
+    @Query("limit") limit?: string | string[],
   ) {
-    await this.projectsService.findBySlug(slug, user.id);
-    return { results: [], query: q ?? "", total: 0 };
+    return this.projectsService.search(slug, user.id, { q, types, limit });
   }
 
   @Get(":slug/graph-layout")
