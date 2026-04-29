@@ -3,8 +3,8 @@
 Scoped plan for completing the MCP server to a testable state. Covers API prerequisites, auth, review queue, and MCP tool expansion.
 
 **Created:** 2026-04-24
-**Updated:** 2026-04-24
-**Status:** Phases 1–2 complete, Phase 3 next
+**Updated:** 2026-04-29
+**Status:** Phases 1–3 read expansion complete; write safety queue remains future work
 **Reference:** See TODO.md > Near-Term for task tracking
 
 ---
@@ -13,14 +13,35 @@ Scoped plan for completing the MCP server to a testable state. Covers API prereq
 
 ### What exists today
 
-The MCP server (`apps/mcp/src/index.ts`) is a single-file stdio server with:
+The MCP server (`apps/mcp/src/index.ts`, with tool registration in `apps/mcp/src/tools.ts`) is a stdio server with:
 
-- 5 read tools: `search_project`, `get_entity`, `list_entities`, `get_storyboard`, `get_entity_types`
-- 4 write tools: `create_entity`, `update_entity`, `create_relationship`, `create_lore_article`
+- Read-only tools for project navigation, entity reads, search, lore, timeline, relationships, tags, and storyboard navigation:
+  - Projects: `list_projects`, `get_project`
+  - Search/entities: `search_project`, `list_entities`, `get_entity`, `get_entity_types`
+  - Lore: `list_lore_articles`, `get_lore_article`
+  - Timeline: `list_timeline_events`, `get_timeline_event`
+  - Relationships: `list_relationships`, `get_relationship`
+  - Tags: `list_tags`, `get_tag`
+  - Storyboard: `get_storyboard`, `list_plotlines`, `get_plotline`, `list_works`, `get_work`, `list_scenes_by_chapter`
+- 4 existing write tools: `create_entity`, `update_entity`, `create_relationship`, `create_lore_article`
 - 1 resource: `project_overview`
 - A simple `api()` helper that throws on HTTP errors
 - Auth via `MCP_API_TOKEN` env var (API key with `lrm_` prefix, Bearer token)
 - API key system with generate/list/revoke, project-scoped permissions (READ_ONLY / READ_WRITE)
+
+### Read expansion note (2026-04-29)
+
+The MCP read surface is now broad enough for an agent to navigate from projects into entities, lore, timelines, relationships, tags, and storyboard structures using tools backed by existing API endpoints. Storyboard scene access is intentionally limited to `list_scenes_by_chapter`, which requires a known chapter ID obtained from work/chapter structure.
+
+Existing mutation tools remain unchanged and still call direct write endpoints. They do **not** route through `PendingChange`, and this document should not be read as claiming review-queue write safety for MCP writes.
+
+Intentionally deferred items:
+
+- Direct `get_scene` support.
+- Direct `get_chapter` / `list_chapters` support.
+- Write safety via a `PendingChange` review queue for MCP mutations.
+
+MCP tool tests use fake API calls against the extracted tool-registration seam. They verify URL construction and JSON text responses without requiring a live API server, Postgres, or secrets.
 
 ### What's done
 
@@ -33,16 +54,16 @@ The MCP server (`apps/mcp/src/index.ts`) is a single-file stdio server with:
 
 **Phase 2 (Fix Broken Endpoints) — Complete:**
 
-- `GET /projects/:slug/search` — stub returning empty results (OpenSearch pending for full-text)
+- `GET /projects/:slug/search` — basic Prisma-backed search across entities, lore, timeline events, and scenes (OpenSearch remains long-term)
 - `GET /projects/:slug/entities/:slug` — entity hub aggregation with relationships, lore, timeline, tags
 - `GET /projects/:slug/storyboard` — overview with plotlines + works/chapters/scene counts
 - `get_entity_hub` tool removed from MCP (entity detail endpoint serves its purpose)
 
 ### What's remaining
 
-**Read tool coverage is thin:** Only 5 of ~17 useful read tools exist. Missing: project navigation, relationships, timeline/eras, lore articles, tags, plotline/work/scene detail. An AI can't fully explore a world yet.
+**Direct chapter/scene reads are intentionally deferred:** MCP can read scenes by known chapter ID via `list_scenes_by_chapter`, but direct `get_scene`, `get_chapter`, and `list_chapters` tools are not exposed until matching API read seams are deliberately added.
 
-**Search is a stub:** The `search_project` tool calls the endpoint but always gets empty results. Needs a real Prisma `contains` implementation across entities, lore, timeline, and scenes.
+**Search is basic, not full-text infrastructure:** The `search_project` tool now returns real Prisma `contains` results. OpenSearch/search-vector work remains long-term.
 
 **Write tools bypass review queue:** All mutation tools write directly to the DB. The spec requires all MCP writes to go through `PendingChange` staging.
 
@@ -70,20 +91,20 @@ The MCP server (`apps/mcp/src/index.ts`) is a single-file stdio server with:
 
 **Delivered:**
 
-- `GET /projects/:slug/search` — stub (returns empty, OpenSearch is long-term)
+- `GET /projects/:slug/search` — basic Prisma-backed search across entities, lore, timeline events, and scenes (OpenSearch remains long-term)
 - `GET /projects/:slug/entities/:slug` — entity detail with full hub data (relationships, lore, timeline, tags)
 - `GET /projects/:slug/storyboard` — overview with plotlines + works/chapters/scene counts
 - Removed `get_entity_hub` MCP tool (entity detail endpoint covers it)
 
 ### Phase 3: Complete MCP Read Tools + Search
 
-**Goal:** Full read coverage — every content type in Loreum is readable via MCP, and search actually works.
+**Goal:** Broad read coverage over existing API read seams, plus working basic search.
 
-**Scope:** MCP tools in `apps/mcp/`, plus API work for search.
+**Scope:** MCP tools in `apps/mcp/`, plus API work for search. Direct scene/chapter APIs remain a separate follow-up unless exposed by existing endpoints.
 
 #### 3a. Search implementation (`apps/api/`)
 
-The search endpoint is currently a stub returning empty results. Implement basic Prisma `contains` search across all content types:
+Implemented basic Prisma `contains` search across all content types:
 
 - Query entities (name, summary, description), lore articles (title, content), timeline events (title, description), scenes (title, content)
 - Filter by `types` array (entity, lore, timeline, scene)
@@ -94,20 +115,23 @@ The search endpoint is currently a stub returning empty results. Implement basic
 
 All API endpoints already exist. MCP-side only.
 
-| Tool                 | API Endpoint                                         | Notes                                              |
-| -------------------- | ---------------------------------------------------- | -------------------------------------------------- |
-| `list_projects`      | `GET /projects`                                      | List user's projects                               |
-| `get_project`        | `GET /projects/:slug`                                | Project detail (replaces resource-only access)     |
-| `list_relationships` | `GET /projects/:slug/relationships?entity=`          | Relationships, optionally filtered by entity       |
-| `get_timeline`       | `GET /projects/:slug/timeline?entity=&significance=` | Timeline events with optional filters              |
-| `get_timeline_event` | `GET /projects/:slug/timeline/:id`                   | Single event detail                                |
-| `list_eras`          | `GET /projects/:slug/timeline/eras`                  | Eras for a project                                 |
-| `list_lore_articles` | `GET /projects/:slug/lore?q=&category=&entity=`      | Filter lore articles                               |
-| `get_lore_article`   | `GET /projects/:slug/lore/:slug`                     | Single lore article                                |
-| `list_tags`          | `GET /projects/:slug/tags`                           | All tags in a project                              |
-| `get_plotline`       | `GET /projects/:slug/storyboard/plotlines/:slug`     | Plotline with plot points                          |
-| `get_work`           | `GET /projects/:slug/storyboard/works/:slug`         | Work with chapters and scene structure             |
-| `list_scenes`        | `GET /projects/:slug/storyboard/scenes?chapterId=`   | Scenes in a chapter (the actual narrative content) |
+| Tool                     | API Endpoint                                         | Notes                                          |
+| ------------------------ | ---------------------------------------------------- | ---------------------------------------------- |
+| `list_projects`          | `GET /projects`                                      | List user's projects                           |
+| `get_project`            | `GET /projects/:slug`                                | Project detail (replaces resource-only access) |
+| `list_relationships`     | `GET /projects/:slug/relationships?entity=`          | Relationships, optionally filtered by entity   |
+| `get_relationship`       | `GET /projects/:slug/relationships/:id`              | Single relationship detail                     |
+| `list_timeline_events`   | `GET /projects/:slug/timeline?entity=&significance=` | Timeline events with optional filters          |
+| `get_timeline_event`     | `GET /projects/:slug/timeline/:id`                   | Single event detail                            |
+| `list_lore_articles`     | `GET /projects/:slug/lore?q=&category=&entity=`      | Filter lore articles                           |
+| `get_lore_article`       | `GET /projects/:slug/lore/:slug`                     | Single lore article                            |
+| `list_tags`              | `GET /projects/:slug/tags`                           | All tags in a project                          |
+| `get_tag`                | `GET /projects/:slug/tags/:name`                     | Single tag detail                              |
+| `list_plotlines`         | `GET /projects/:slug/storyboard/plotlines`           | Project plotlines                              |
+| `get_plotline`           | `GET /projects/:slug/storyboard/plotlines/:slug`     | Plotline with plot points                      |
+| `list_works`             | `GET /projects/:slug/storyboard/works`               | Works in a project                             |
+| `get_work`               | `GET /projects/:slug/storyboard/works/:slug`         | Work with chapters and scene structure         |
+| `list_scenes_by_chapter` | `GET /projects/:slug/storyboard/scenes?chapterId=`   | Scenes in a known chapter                      |
 
 #### 3c. Quality pass
 
