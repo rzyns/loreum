@@ -259,6 +259,81 @@ export function registerTools(server: ToolServer, api: ApiClient) {
   );
 
   server.registerTool(
+    "list_plotlines",
+    {
+      description: "List storyboard plotlines in a project",
+      inputSchema: { projectSlug: z.string() },
+    },
+    async ({ projectSlug }) => {
+      const plotlines = await api(
+        `/projects/${pathSegment(projectSlug)}/storyboard/plotlines`,
+      );
+      return jsonContent(plotlines);
+    },
+  );
+
+  server.registerTool(
+    "get_plotline",
+    {
+      description: "Get a storyboard plotline by slug",
+      inputSchema: { projectSlug: z.string(), plotlineSlug: z.string() },
+    },
+    async ({ projectSlug, plotlineSlug }) => {
+      const plotline = await api(
+        `/projects/${pathSegment(projectSlug)}/storyboard/plotlines/${pathSegment(
+          plotlineSlug,
+        )}`,
+      );
+      return jsonContent(plotline);
+    },
+  );
+
+  server.registerTool(
+    "list_works",
+    {
+      description: "List storyboard works in a project",
+      inputSchema: { projectSlug: z.string() },
+    },
+    async ({ projectSlug }) => {
+      const works = await api(
+        `/projects/${pathSegment(projectSlug)}/storyboard/works`,
+      );
+      return jsonContent(works);
+    },
+  );
+
+  server.registerTool(
+    "get_work",
+    {
+      description: "Get a storyboard work by slug with chapters",
+      inputSchema: { projectSlug: z.string(), workSlug: z.string() },
+    },
+    async ({ projectSlug, workSlug }) => {
+      const work = await api(
+        `/projects/${pathSegment(projectSlug)}/storyboard/works/${pathSegment(
+          workSlug,
+        )}`,
+      );
+      return jsonContent(work);
+    },
+  );
+
+  server.registerTool(
+    "list_scenes_by_chapter",
+    {
+      description: "List storyboard scenes for a chapter",
+      inputSchema: { projectSlug: z.string(), chapterId: z.string() },
+    },
+    async ({ projectSlug, chapterId }) => {
+      const query = optionalQuery({ chapterId });
+      const scenes = await api(
+        `/projects/${pathSegment(projectSlug)}/storyboard/scenes${query}`,
+      );
+      return jsonContent(scenes);
+    },
+  );
+
+  server.registerTool(
     "get_entity_types",
     {
       description:

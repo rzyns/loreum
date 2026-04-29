@@ -72,6 +72,11 @@ test("registerTools registers all existing MCP tools and resources", () => {
     "list_tags",
     "get_tag",
     "get_storyboard",
+    "list_plotlines",
+    "get_plotline",
+    "list_works",
+    "get_work",
+    "list_scenes_by_chapter",
     "get_entity_types",
     "create_entity",
     "update_entity",
@@ -375,6 +380,117 @@ test("registerTools wires get_tag with URL-encoded path segments", async () => {
   assert.deepEqual(apiCalls, [
     {
       path: "/projects/demo%20world/tags/magic%2Ffire",
+      options: undefined,
+    },
+  ]);
+  expectJsonContent(result, apiResult);
+});
+
+test("registerTools wires list_plotlines through injectable API client", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = [{ slug: "main", title: "Main Plot" }];
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const listPlotlines = registeredTools.get("list_plotlines");
+  assert.ok(listPlotlines, "list_plotlines handler should be registered");
+
+  const result = await listPlotlines({ projectSlug: "demo" });
+
+  assert.deepEqual(apiCalls, [
+    { path: "/projects/demo/storyboard/plotlines", options: undefined },
+  ]);
+  expectJsonContent(result, apiResult);
+});
+
+test("registerTools wires get_plotline with URL-encoded path segments", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = { slug: "main/arc", title: "Main Arc" };
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const getPlotline = registeredTools.get("get_plotline");
+  assert.ok(getPlotline, "get_plotline handler should be registered");
+
+  const result = await getPlotline({
+    projectSlug: "demo world",
+    plotlineSlug: "main/arc",
+  });
+
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo%20world/storyboard/plotlines/main%2Farc",
+      options: undefined,
+    },
+  ]);
+  expectJsonContent(result, apiResult);
+});
+
+test("registerTools wires list_works through injectable API client", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = [{ slug: "book-one", title: "Book One" }];
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const listWorks = registeredTools.get("list_works");
+  assert.ok(listWorks, "list_works handler should be registered");
+
+  const result = await listWorks({ projectSlug: "demo" });
+
+  assert.deepEqual(apiCalls, [
+    { path: "/projects/demo/storyboard/works", options: undefined },
+  ]);
+  expectJsonContent(result, apiResult);
+});
+
+test("registerTools wires get_work with URL-encoded path segments", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = { slug: "book/one", title: "Book One" };
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const getWork = registeredTools.get("get_work");
+  assert.ok(getWork, "get_work handler should be registered");
+
+  const result = await getWork({
+    projectSlug: "demo world",
+    workSlug: "book/one",
+  });
+
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo%20world/storyboard/works/book%2Fone",
+      options: undefined,
+    },
+  ]);
+  expectJsonContent(result, apiResult);
+});
+
+test("registerTools wires list_scenes_by_chapter with required encoded chapterId query", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const apiResult = [{ id: "scene_1", title: "Opening" }];
+  const { api, apiCalls } = createApi(apiResult);
+
+  registerTools(server, api);
+
+  const listScenesByChapter = registeredTools.get("list_scenes_by_chapter");
+  assert.ok(
+    listScenesByChapter,
+    "list_scenes_by_chapter handler should be registered",
+  );
+
+  const result = await listScenesByChapter({
+    projectSlug: "demo world",
+    chapterId: "chapter/one & two",
+  });
+
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo%20world/storyboard/scenes?chapterId=chapter%2Fone+%26+two",
       options: undefined,
     },
   ]);
