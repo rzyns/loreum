@@ -1,0 +1,46 @@
+# VCS and editor state
+.git
+.gitignore
+.husky
+.hermes
+.vscode
+.idea
+
+# Dependencies and package-manager caches
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+.npm
+.yarn
+
+# Build outputs and caches
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+coverage
+**/coverage
+*.tsbuildinfo
+
+# Local env/secrets; pass runtime config via compose/env instead
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+.tmp
+tmp
+
+# Local Docker artifacts
+docker-compose.override.yml

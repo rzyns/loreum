@@ -1,0 +1,161 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: loreum-postgres${CONTAINER_SUFFIX:-}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    ports:
+      - "${DB_BIND_ADDR:-127.0.0.1}:${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: loreum-redis${CONTAINER_SUFFIX:-}
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_BIND_ADDR:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    image: dcr.svc.dziurzynscy.com/loreum-api:${LOREUM_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: loreum-migrate${CONTAINER_SUFFIX:-}
+    env_file:
+      - ${LOREUM_ENV_FILE:-.env.homelab}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-2h}
+      TOKEN_ROTATION_MINUTES: ${TOKEN_ROTATION_MINUTES:-100}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-60}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3020}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:?GOOGLE_CALLBACK_URL is required}
+    working_dir: /app/apps/api
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: dcr.svc.dziurzynscy.com/loreum-api:${LOREUM_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: loreum-api${CONTAINER_SUFFIX:-}
+    env_file:
+      - ${LOREUM_ENV_FILE:-.env.homelab}
+    environment:
+      NODE_ENV: production
+      API_PORT: 3021
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-2h}
+      TOKEN_ROTATION_MINUTES: ${TOKEN_ROTATION_MINUTES:-100}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-60}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3020}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:?GOOGLE_CALLBACK_URL is required}
+    ports:
+      - "${API_BIND_ADDR:-127.0.0.1}:${API_PORT:-3021}:3021"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3021/v1/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  web:
+    image: dcr.svc.dziurzynscy.com/loreum-web:${LOREUM_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3021/v1}
+    container_name: loreum-web${CONTAINER_SUFFIX:-}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3021/v1}
+    ports:
+      - "${WEB_BIND_ADDR:-127.0.0.1}:${WEB_PORT:-3020}:3020"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3020/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  opensearch:
+    profiles: ["search"]
+    image: opensearchproject/opensearch:2.14.0
+    container_name: loreum-opensearch${CONTAINER_SUFFIX:-}
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: ${OPENSEARCH_DISABLE_SECURITY:-true}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_ADMIN_PASSWORD:-}
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "${OPENSEARCH_BIND_ADDR:-127.0.0.1}:${OPENSEARCH_PORT:-19200}:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:9200/_cluster/health || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  opensearch_data:
