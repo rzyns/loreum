@@ -2,6 +2,7 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
@@ -46,7 +47,52 @@ export class ApiKeyAuthGuard extends AuthGuard("jwt") implements CanActivate {
       },
     };
 
+    this.authorizeApiKeyRequest(request, user);
+
     request.user = user;
     return true;
+  }
+
+  private authorizeApiKeyRequest(request: Request, user: AuthUser) {
+    const method = request.method.toUpperCase();
+    const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(method);
+
+    this.ensureApiKeyProjectScope(request, user);
+
+    if (!isMutation) {
+      return;
+    }
+
+    if (user.apiKey?.permissions !== "READ_WRITE") {
+      throw new ForbiddenException("API key does not have write permission");
+    }
+
+    if (!this.getRequestedProjectIdentifier(request)) {
+      throw new ForbiddenException(
+        "Project-scoped API keys cannot perform account-level writes",
+      );
+    }
+  }
+
+  private ensureApiKeyProjectScope(request: Request, user: AuthUser) {
+    const requestedProject = this.getRequestedProjectIdentifier(request);
+    if (!requestedProject) {
+      return;
+    }
+
+    if (
+      requestedProject !== user.apiKey?.projectSlug &&
+      requestedProject !== user.apiKey?.projectId
+    ) {
+      throw new ForbiddenException(
+        "API key is not authorized for the requested project",
+      );
+    }
+  }
+
+  private getRequestedProjectIdentifier(request: Request): string | undefined {
+    const params = request.params ?? {};
+    const identifier = params.projectSlug ?? params.projectId ?? params.slug;
+    return Array.isArray(identifier) ? identifier[0] : identifier;
   }
 }
