@@ -22,6 +22,7 @@ interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
+  refreshUser: () => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -31,12 +32,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const refreshUser = useCallback(async () => {
+    const currentUser = await api<AuthUser>("/auth/me");
+    setUser(currentUser);
+    return currentUser;
+  }, []);
+
   useEffect(() => {
-    api<AuthUser>("/auth/me")
-      .then(setUser)
+    refreshUser()
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshUser]);
 
   const logout = useCallback(async () => {
     try {
@@ -47,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

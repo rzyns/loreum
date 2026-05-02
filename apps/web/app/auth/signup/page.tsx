@@ -8,9 +8,11 @@ import { Button } from "@loreum/ui/button";
 import { Input } from "@loreum/ui/input";
 import { Label } from "@loreum/ui/label";
 import { api } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,8 +33,8 @@ export default function SignUpPage() {
           ...(name.trim() ? { name: name.trim() } : {}),
         }),
       });
-      router.push("/projects");
-      router.refresh();
+      await refreshUser();
+      router.replace("/projects");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create account");
     } finally {

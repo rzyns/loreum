@@ -8,9 +8,11 @@ import { Input } from "@loreum/ui/input";
 import { Label } from "@loreum/ui/label";
 import { BookOpen } from "lucide-react";
 import { api } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth-context";
 
 export default function SignInPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +28,8 @@ export default function SignInPage() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      router.push("/projects");
-      router.refresh();
+      await refreshUser();
+      router.replace("/projects");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
     } finally {
