@@ -15,8 +15,6 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
-ARG NEXT_PUBLIC_API_URL=http://localhost:3021/v1
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN pnpm --filter web... build
 RUN mkdir -p apps/web/public
 
