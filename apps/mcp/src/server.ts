@@ -9,7 +9,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import { api, type ApiClient } from "./api.js";
-import { registerTools } from "./tools.js";
+import {
+  registerTools,
+  WRITE_TOOL_NAMES,
+  type WriteToolName,
+} from "./tools.js";
 
 export type McpTransport = "stdio" | "http";
 
@@ -19,11 +23,28 @@ export type McpConfig = {
   port: number;
   httpAuthToken?: string;
   readOnly: boolean;
+  writeTools: readonly WriteToolName[];
 };
 
 function parseBoolean(value: string | undefined, defaultValue: boolean) {
   if (value === undefined) return defaultValue;
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+const HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>(["create_entity"]);
+
+function parseWriteTools(env: NodeJS.ProcessEnv, transport: McpTransport) {
+  if (transport !== "http") return WRITE_TOOL_NAMES;
+  if (!parseBoolean(env.MCP_ENABLE_WRITES, false)) return [];
+
+  const requestedTools = (env.MCP_WRITE_TOOLS ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+  return requestedTools.filter((name): name is WriteToolName =>
+    HTTP_WRITE_ALLOWLIST.has(name as WriteToolName),
+  );
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): McpConfig {
@@ -37,12 +58,19 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): McpConfig {
     throw new Error("MCP_PORT must be a valid TCP port");
   }
 
+  const writeTools = parseWriteTools(env, transport);
+  const readOnly = parseBoolean(
+    env.MCP_READ_ONLY,
+    transport === "http" && writeTools.length === 0,
+  );
+
   return {
     transport,
     host: env.MCP_HOST ?? "0.0.0.0",
     port,
     httpAuthToken: env.MCP_HTTP_AUTH_TOKEN,
-    readOnly: parseBoolean(env.MCP_READ_ONLY, transport === "http"),
+    readOnly,
+    writeTools,
   };
 }
 
@@ -50,6 +78,7 @@ export function createMcpServer(
   options: {
     apiClient?: ApiClient;
     readOnly?: boolean;
+    writeTools?: readonly string[];
   } = {},
 ) {
   const server = new McpServer({
@@ -59,6 +88,7 @@ export function createMcpServer(
 
   registerTools(server, options.apiClient ?? api, {
     readOnly: options.readOnly,
+    writeTools: options.writeTools,
   });
   return server;
 }
@@ -73,7 +103,10 @@ function sendJson(res: ServerResponse, statusCode: number, value: unknown) {
 }
 
 export async function startStdioServer(config = configFromEnv()) {
-  const server = createMcpServer({ readOnly: config.readOnly });
+  const server = createMcpServer({
+    readOnly: config.readOnly,
+    writeTools: config.writeTools,
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Loreum MCP server running on stdio");
@@ -118,7 +151,10 @@ export async function startHttpServer(config = configFromEnv()) {
       return;
     }
 
-    const mcpServer = createMcpServer({ readOnly: config.readOnly });
+    const mcpServer = createMcpServer({
+      readOnly: config.readOnly,
+      writeTools: config.writeTools,
+    });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });

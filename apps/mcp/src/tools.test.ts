@@ -121,6 +121,44 @@ test("registerTools omits mutation tools in read-only mode", () => {
   ]);
 });
 
+test("registerTools exposes only explicitly allowlisted mutation tools", () => {
+  const { server, registeredTools } = createFakeServer();
+  const { api } = createApi({});
+
+  registerTools(server, api, {
+    readOnly: false,
+    writeTools: ["create_entity"],
+  });
+
+  assert.deepEqual(
+    Array.from(registeredTools.keys()).filter((name) =>
+      [
+        "create_entity",
+        "update_entity",
+        "create_relationship",
+        "create_lore_article",
+      ].includes(name),
+    ),
+    ["create_entity"],
+  );
+});
+
+test("registerTools ignores unknown write-tool allowlist entries", () => {
+  const { server, registeredTools } = createFakeServer();
+  const { api } = createApi({});
+
+  registerTools(server, api, {
+    readOnly: false,
+    writeTools: ["create_entity", "delete_everything"],
+  });
+
+  assert.equal(registeredTools.has("create_entity"), true);
+  assert.equal(registeredTools.has("delete_everything"), false);
+  assert.equal(registeredTools.has("update_entity"), false);
+  assert.equal(registeredTools.has("create_relationship"), false);
+  assert.equal(registeredTools.has("create_lore_article"), false);
+});
+
 test("registerTools wires list_projects through injectable API client", async () => {
   const { server, registeredTools } = createFakeServer();
   const apiResult = [{ slug: "demo", name: "Demo" }];

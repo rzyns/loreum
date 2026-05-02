@@ -7,9 +7,28 @@ export type { ApiClient } from "./api.js";
 
 type ToolServer = Pick<McpServer, "registerTool" | "resource">;
 
+export const WRITE_TOOL_NAMES = [
+  "create_entity",
+  "update_entity",
+  "create_relationship",
+  "create_lore_article",
+] as const;
+
+export type WriteToolName = (typeof WRITE_TOOL_NAMES)[number];
+
 export type RegisterToolsOptions = {
   readOnly?: boolean;
+  writeTools?: readonly string[];
 };
+
+function writeToolIsAllowed(
+  options: RegisterToolsOptions,
+  toolName: WriteToolName,
+) {
+  if (options.readOnly) return false;
+  if (!options.writeTools) return true;
+  return options.writeTools.includes(toolName);
+}
 
 export function jsonContent(value: unknown) {
   return {
@@ -354,7 +373,7 @@ export function registerTools(
     },
   );
 
-  if (!options.readOnly) {
+  if (writeToolIsAllowed(options, "create_entity")) {
     server.registerTool(
       "create_entity",
       {
@@ -379,7 +398,9 @@ export function registerTools(
         return jsonContent(entity);
       },
     );
+  }
 
+  if (writeToolIsAllowed(options, "update_entity")) {
     server.registerTool(
       "update_entity",
       {
@@ -401,7 +422,9 @@ export function registerTools(
         return jsonContent(entity);
       },
     );
+  }
 
+  if (writeToolIsAllowed(options, "create_relationship")) {
     server.registerTool(
       "create_relationship",
       {
@@ -424,7 +447,9 @@ export function registerTools(
         return jsonContent(rel);
       },
     );
+  }
 
+  if (writeToolIsAllowed(options, "create_lore_article")) {
     server.registerTool(
       "create_lore_article",
       {
