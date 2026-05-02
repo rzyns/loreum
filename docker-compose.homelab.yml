@@ -50,9 +50,11 @@ services:
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-60}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3020}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
-      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:?GOOGLE_CALLBACK_URL is required}
+      AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
+      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
     working_dir: /app/apps/api
     command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
     depends_on:
@@ -79,9 +81,11 @@ services:
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-60}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3020}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
-      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:?GOOGLE_CALLBACK_URL is required}
+      AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
+      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
     ports:
       - "${API_BIND_ADDR:-127.0.0.1}:${API_PORT:-3021}:3021"
     depends_on:
@@ -108,12 +112,10 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3021/v1}
     container_name: loreum-web${CONTAINER_SUFFIX:-}
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3021/v1}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:3021/v1}
     ports:
       - "${WEB_BIND_ADDR:-127.0.0.1}:${WEB_PORT:-3020}:3020"
     depends_on:

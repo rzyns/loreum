@@ -38,15 +38,7 @@ docker build -f apps/web/Dockerfile -t loreum-web:local .
 docker build -f apps/mcp/Dockerfile -t loreum-mcp:local .
 ```
 
-`NEXT_PUBLIC_API_URL` is a browser-visible value and must be available at web build time:
-
-```sh
-docker build \
-  -f apps/web/Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=https://loreum-api.example.internal/v1 \
-  -t loreum-web:local \
-  .
-```
+The web image does not need a browser-visible API build argument for homelab. Browser requests go to the same-origin `/v1/*` Next.js proxy, and the running web container forwards them to `API_INTERNAL_URL`.
 
 ## Homelab Compose deployment
 
@@ -59,9 +51,9 @@ docker build \
 
 2. Edit `.env.homelab`:
    - Replace all placeholder passwords/secrets.
-   - Set `NEXT_PUBLIC_API_URL` to the externally reachable API base URL, including `/v1`.
+   - Keep `API_INTERNAL_URL` pointed at the Compose-internal API service, normally `http://api:3021/v1`.
    - Set `CORS_ORIGIN` to the externally reachable web origin.
-   - Set `GOOGLE_CALLBACK_URL` to the externally reachable API callback URL.
+   - Set `GOOGLE_CALLBACK_URL` to the externally reachable API callback URL if Google auth is enabled.
    - Set `COOKIE_DOMAIN` only when you need a parent-domain cookie scope, e.g. `.example.internal`; otherwise leave it blank.
    - Keep the default `*_BIND_ADDR=127.0.0.1` unless a reverse proxy needs a different bind address.
 
