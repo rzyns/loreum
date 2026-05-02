@@ -66,9 +66,12 @@ export class ProjectsService {
     });
   }
 
-  async findAllByUser(userId: string) {
+  async findAllByUser(userId: string, scopedProjectId?: string) {
     return this.prisma.project.findMany({
-      where: { ownerId: userId },
+      where: {
+        ownerId: userId,
+        ...(scopedProjectId ? { id: scopedProjectId } : {}),
+      },
       orderBy: { updatedAt: "desc" },
     });
   }

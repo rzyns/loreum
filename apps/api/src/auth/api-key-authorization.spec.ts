@@ -116,6 +116,22 @@ describe("API key authorization boundary (integration)", () => {
       .expect(403);
   });
 
+  it("filters account-level project lists to the API key scoped project", async () => {
+    const apiKey = await createApiKey(projectASlug, "READ_ONLY");
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/projects")
+      .set(bearer(apiKey))
+      .expect(200);
+
+    expect(res.body.map((project: { slug: string }) => project.slug)).toEqual([
+      projectASlug,
+    ]);
+    expect(
+      res.body.map((project: { slug: string }) => project.slug),
+    ).not.toContain(projectBSlug);
+  });
+
   it("rejects project-global account-level writes for project-scoped API keys", async () => {
     const apiKey = await createApiKey(projectASlug, "READ_WRITE");
 
@@ -124,6 +140,17 @@ describe("API key authorization boundary (integration)", () => {
       .set(bearer(apiKey))
       .send({ name: "API Key Created Project" })
       .expect(403);
+  });
+
+  it("preserves JWT-cookie session project lists", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/v1/projects")
+      .set("Cookie", authCookie)
+      .expect(200);
+
+    expect(res.body.map((project: { slug: string }) => project.slug)).toEqual(
+      expect.arrayContaining([projectASlug, projectBSlug]),
+    );
   });
 
   it("preserves JWT-cookie session writes", async () => {

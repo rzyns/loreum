@@ -38,7 +38,7 @@ export class ProjectsController {
   @Get()
   @ApiOperation({ summary: "List all projects for the current user" })
   findAll(@User() user: AuthUser) {
-    return this.projectsService.findAllByUser(user.id);
+    return this.projectsService.findAllByUser(user.id, user.apiKey?.projectId);
   }
 
   @Get(":slug/search")
