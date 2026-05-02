@@ -7,6 +7,10 @@ export type { ApiClient } from "./api.js";
 
 type ToolServer = Pick<McpServer, "registerTool" | "resource">;
 
+export type RegisterToolsOptions = {
+  readOnly?: boolean;
+};
+
 export function jsonContent(value: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
@@ -25,7 +29,11 @@ function pathSegment(value: string) {
   return encodeURIComponent(value);
 }
 
-export function registerTools(server: ToolServer, api: ApiClient) {
+export function registerTools(
+  server: ToolServer,
+  api: ApiClient,
+  options: RegisterToolsOptions = {},
+) {
   server.registerTool(
     "list_projects",
     {
@@ -346,97 +354,99 @@ export function registerTools(server: ToolServer, api: ApiClient) {
     },
   );
 
-  server.registerTool(
-    "create_entity",
-    {
-      description: "Create a new entity in a project",
-      inputSchema: {
-        projectSlug: z.string(),
-        type: z.enum(["CHARACTER", "LOCATION", "ORGANIZATION", "ITEM"]),
-        name: z.string(),
-        summary: z.string().optional(),
-        description: z.string().optional(),
-        backstory: z.string().optional(),
-        secrets: z.string().optional(),
-        notes: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-      },
-    },
-    async ({ projectSlug, ...data }) => {
-      const entity = await api(`/projects/${projectSlug}/entities`, {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-      return jsonContent(entity);
-    },
-  );
-
-  server.registerTool(
-    "update_entity",
-    {
-      description: "Update an existing entity",
-      inputSchema: {
-        projectSlug: z.string(),
-        entitySlug: z.string(),
-        updates: z.record(z.string(), z.any()),
-      },
-    },
-    async ({ projectSlug, entitySlug, updates }) => {
-      const entity = await api(
-        `/projects/${projectSlug}/entities/${entitySlug}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(updates),
+  if (!options.readOnly) {
+    server.registerTool(
+      "create_entity",
+      {
+        description: "Create a new entity in a project",
+        inputSchema: {
+          projectSlug: z.string(),
+          type: z.enum(["CHARACTER", "LOCATION", "ORGANIZATION", "ITEM"]),
+          name: z.string(),
+          summary: z.string().optional(),
+          description: z.string().optional(),
+          backstory: z.string().optional(),
+          secrets: z.string().optional(),
+          notes: z.string().optional(),
+          tags: z.array(z.string()).optional(),
         },
-      );
-      return jsonContent(entity);
-    },
-  );
-
-  server.registerTool(
-    "create_relationship",
-    {
-      description: "Create a relationship between two entities",
-      inputSchema: {
-        projectSlug: z.string(),
-        sourceEntitySlug: z.string(),
-        targetEntitySlug: z.string(),
-        type: z.string(),
-        label: z.string().optional(),
-        metadata: z.record(z.string(), z.any()).optional(),
-        bidirectional: z.boolean().optional(),
       },
-    },
-    async ({ projectSlug, ...data }) => {
-      const rel = await api(`/projects/${projectSlug}/relationships`, {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-      return jsonContent(rel);
-    },
-  );
-
-  server.registerTool(
-    "create_lore_article",
-    {
-      description: "Create a lore article linked to entities",
-      inputSchema: {
-        projectSlug: z.string(),
-        title: z.string(),
-        content: z.string(),
-        category: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        entitySlugs: z.array(z.string()).optional(),
+      async ({ projectSlug, ...data }) => {
+        const entity = await api(`/projects/${projectSlug}/entities`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+        return jsonContent(entity);
       },
-    },
-    async ({ projectSlug, ...data }) => {
-      const article = await api(`/projects/${projectSlug}/lore`, {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-      return jsonContent(article);
-    },
-  );
+    );
+
+    server.registerTool(
+      "update_entity",
+      {
+        description: "Update an existing entity",
+        inputSchema: {
+          projectSlug: z.string(),
+          entitySlug: z.string(),
+          updates: z.record(z.string(), z.any()),
+        },
+      },
+      async ({ projectSlug, entitySlug, updates }) => {
+        const entity = await api(
+          `/projects/${projectSlug}/entities/${entitySlug}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(updates),
+          },
+        );
+        return jsonContent(entity);
+      },
+    );
+
+    server.registerTool(
+      "create_relationship",
+      {
+        description: "Create a relationship between two entities",
+        inputSchema: {
+          projectSlug: z.string(),
+          sourceEntitySlug: z.string(),
+          targetEntitySlug: z.string(),
+          type: z.string(),
+          label: z.string().optional(),
+          metadata: z.record(z.string(), z.any()).optional(),
+          bidirectional: z.boolean().optional(),
+        },
+      },
+      async ({ projectSlug, ...data }) => {
+        const rel = await api(`/projects/${projectSlug}/relationships`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+        return jsonContent(rel);
+      },
+    );
+
+    server.registerTool(
+      "create_lore_article",
+      {
+        description: "Create a lore article linked to entities",
+        inputSchema: {
+          projectSlug: z.string(),
+          title: z.string(),
+          content: z.string(),
+          category: z.string().optional(),
+          tags: z.array(z.string()).optional(),
+          entitySlugs: z.array(z.string()).optional(),
+        },
+      },
+      async ({ projectSlug, ...data }) => {
+        const article = await api(`/projects/${projectSlug}/lore`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+        return jsonContent(article);
+      },
+    );
+  }
 
   server.resource(
     "project_overview",

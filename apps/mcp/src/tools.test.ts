@@ -88,6 +88,39 @@ test("registerTools registers all existing MCP tools and resources", () => {
   ]);
 });
 
+test("registerTools omits mutation tools in read-only mode", () => {
+  const { server, registeredTools, registeredResources } = createFakeServer();
+  const { api } = createApi({});
+
+  registerTools(server, api, { readOnly: true });
+
+  assert.deepEqual(Array.from(registeredTools.keys()), [
+    "list_projects",
+    "get_project",
+    "search_project",
+    "get_entity",
+    "list_entities",
+    "list_lore_articles",
+    "get_lore_article",
+    "list_timeline_events",
+    "get_timeline_event",
+    "list_relationships",
+    "get_relationship",
+    "list_tags",
+    "get_tag",
+    "get_storyboard",
+    "list_plotlines",
+    "get_plotline",
+    "list_works",
+    "get_work",
+    "list_scenes_by_chapter",
+    "get_entity_types",
+  ]);
+  assert.deepEqual(Array.from(registeredResources.keys()), [
+    "project_overview",
+  ]);
+});
+
 test("registerTools wires list_projects through injectable API client", async () => {
   const { server, registeredTools } = createFakeServer();
   const apiResult = [{ slug: "demo", name: "Demo" }];
