@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Body,
   Delete,
   Param,
   Req,
@@ -9,19 +10,25 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
-import { Request, Response } from 'express';
-import { AuthService } from '../services/auth.service';
-import { CookieService } from '../services/cookie.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { User } from '../decorators/user.decorator';
-import { AuthUser, OAuthUserData } from '../types/jwt.types';
-import { AppConfig } from '../../config/app.config';
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
+import { ApiTags, ApiOperation, ApiCookieAuth } from "@nestjs/swagger";
+import { Request, Response } from "express";
+import { AuthService } from "../services/auth.service";
+import { CookieService } from "../services/cookie.service";
+import { JwtAuthGuard } from "../guards/jwt-auth.guard";
+import { User } from "../decorators/user.decorator";
+import { AuthUser, OAuthUserData } from "../types/jwt.types";
+import { AppConfig } from "../../config/app.config";
+import { SignupDto } from "../dto/signup.dto";
+import { LoginDto } from "../dto/login.dto";
 
-@ApiTags('Auth')
-@Controller('auth')
+type AuthProvider =
+  | { id: "local"; label: string; type: "local" }
+  | { id: "google"; label: string; type: "oauth"; url: string };
+
+@ApiTags("Auth")
+@Controller("auth")
 export class AuthController {
   constructor(
     private authService: AuthService,
@@ -29,26 +36,86 @@ export class AuthController {
     private config: AppConfig,
   ) {}
 
+  @Get("providers")
+  @ApiOperation({ summary: "List enabled auth providers" })
+  getProviders(): AuthProvider[] {
+    const providers: AuthProvider[] = [];
+
+    if (this.config.auth.localEnabled) {
+      providers.push({
+        id: "local",
+        label: "Email and password",
+        type: "local",
+      });
+    }
+
+    if (this.config.auth.googleEnabled) {
+      providers.push({
+        id: "google",
+        label: "Google",
+        type: "oauth",
+        url: "/auth/google",
+      });
+    }
+
+    return providers;
+  }
+
+  @Post("signup")
+  @ApiOperation({ summary: "Sign up with email and password" })
+  async signup(
+    @Body() dto: SignupDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.signup(
+      dto,
+      req.ip,
+      req.headers["user-agent"],
+    );
+    this.cookieService.setCookie(res, result.token);
+    this.cookieService.setCsrfCookie(res, result.user.sessionId);
+    return result;
+  }
+
+  @Post("login")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Log in with email and password" })
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(
+      dto,
+      req.ip,
+      req.headers["user-agent"],
+    );
+    this.cookieService.setCookie(res, result.token);
+    this.cookieService.setCsrfCookie(res, result.user.sessionId);
+    return result;
+  }
+
   // ---------------------------------------------------------------------------
   // Google OAuth
   // ---------------------------------------------------------------------------
 
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Initiate Google OAuth flow' })
+  @Get("google")
+  @UseGuards(AuthGuard("google"))
+  @ApiOperation({ summary: "Initiate Google OAuth flow" })
   googleLogin() {
     // Passport redirects to Google
   }
 
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth callback' })
+  @Get("google/callback")
+  @UseGuards(AuthGuard("google"))
+  @ApiOperation({ summary: "Google OAuth callback" })
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     const oauthData = req.user as OAuthUserData;
     const result = await this.authService.handleOAuthLogin(
       oauthData,
       req.ip,
-      req.headers['user-agent'],
+      req.headers["user-agent"],
     );
 
     this.cookieService.setCookie(res, result.token);
@@ -62,38 +129,38 @@ export class AuthController {
   // Session Management
   // ---------------------------------------------------------------------------
 
-  @Get('me')
+  @Get("me")
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('auth_token')
-  @ApiOperation({ summary: 'Get current authenticated user' })
+  @ApiCookieAuth("auth_token")
+  @ApiOperation({ summary: "Get current authenticated user" })
   async me(@User() user: AuthUser) {
     return this.authService.getUserProfile(user.id);
   }
 
-  @Get('sessions')
+  @Get("sessions")
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('auth_token')
-  @ApiOperation({ summary: 'List active sessions' })
+  @ApiCookieAuth("auth_token")
+  @ApiOperation({ summary: "List active sessions" })
   async getSessions(@User() user: AuthUser) {
     return this.authService.getUserSessions(user.id);
   }
 
-  @Delete('sessions/:sessionId')
+  @Delete("sessions/:sessionId")
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('auth_token')
-  @ApiOperation({ summary: 'Invalidate a specific session' })
+  @ApiCookieAuth("auth_token")
+  @ApiOperation({ summary: "Invalidate a specific session" })
   @HttpCode(HttpStatus.NO_CONTENT)
   async invalidateSession(
     @User() user: AuthUser,
-    @Param('sessionId') sessionId: string,
+    @Param("sessionId") sessionId: string,
   ) {
     await this.authService.invalidateSession(sessionId, user.id);
   }
 
-  @Delete('sessions')
+  @Delete("sessions")
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('auth_token')
-  @ApiOperation({ summary: 'Invalidate all sessions except current' })
+  @ApiCookieAuth("auth_token")
+  @ApiOperation({ summary: "Invalidate all sessions except current" })
   async invalidateAllSessions(@User() user: AuthUser) {
     const count = await this.authService.invalidateAllUserSessions(
       user.id,
@@ -102,10 +169,10 @@ export class AuthController {
     return { invalidated: count };
   }
 
-  @Post('logout')
+  @Post("logout")
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('auth_token')
-  @ApiOperation({ summary: 'Logout current session' })
+  @ApiCookieAuth("auth_token")
+  @ApiOperation({ summary: "Logout current session" })
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
     @User() user: AuthUser,

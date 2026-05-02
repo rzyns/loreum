@@ -5,6 +5,16 @@ import { ConfigService } from "@nestjs/config";
 export class AppConfig {
   constructor(private configService: ConfigService) {}
 
+  private getBoolean(key: string, defaultValue: boolean): boolean {
+    const value = this.configService.get<string>(key);
+
+    if (value === undefined) {
+      return defaultValue;
+    }
+
+    return ["true", "1", "yes", "on"].includes(value.toLowerCase());
+  }
+
   get isDevelopment(): boolean {
     return this.configService.get("NODE_ENV") !== "production";
   }
@@ -58,7 +68,22 @@ export class AppConfig {
     };
   }
 
+  get auth() {
+    return {
+      localEnabled: this.getBoolean("AUTH_LOCAL_ENABLED", true),
+      googleEnabled: this.getBoolean("AUTH_GOOGLE_ENABLED", false),
+    };
+  }
+
   get google() {
+    if (!this.auth.googleEnabled) {
+      return {
+        clientId: "disabled-google-client-id",
+        clientSecret: "disabled-google-client-secret",
+        callbackUrl: "http://localhost/disabled-google-callback",
+      };
+    }
+
     return {
       clientId: this.configService.getOrThrow<string>("GOOGLE_CLIENT_ID"),
       clientSecret: this.configService.getOrThrow<string>(

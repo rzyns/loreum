@@ -21,8 +21,9 @@ model User {
   email     String   @unique
   name      String?
   username  String   @unique
-  avatarUrl String?
-  roles     Role[]   @default([USER])
+  avatarUrl     String?
+  passwordHash String? @db.Text
+  roles         Role[]  @default([USER])
 
   lastActiveAt DateTime?
   createdAt    DateTime  @default(now())

@@ -1,20 +1,24 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import * as crypto from 'crypto';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AppConfig } from '../../config/app.config';
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import * as crypto from "crypto";
+import { PrismaService } from "../../prisma/prisma.service";
+import { AppConfig } from "../../config/app.config";
 import {
   JwtPayload,
   AuthUser,
   OAuthUserData,
   OAuthResult,
-} from '../types/jwt.types';
-import { generateUniqueUsername } from '../../common/utils/slug';
+} from "../types/jwt.types";
+import { PasswordService } from "./password.service";
+import { SignupDto } from "../dto/signup.dto";
+import { LoginDto } from "../dto/login.dto";
+import { generateUniqueUsername } from "../../common/utils/slug";
 
 @Injectable()
 export class AuthService {
@@ -24,7 +28,69 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: AppConfig,
+    private passwordService: PasswordService,
   ) {}
+
+  async signup(
+    dto: SignupDto,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<OAuthResult> {
+    if (!this.config.auth.localEnabled) {
+      throw new ForbiddenException("Local authentication is disabled");
+    }
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException("Email already registered");
+    }
+
+    const username = await generateUniqueUsername(
+      this.prisma,
+      dto.username || dto.name || dto.email.split("@")[0] || "user",
+    );
+    const passwordHash = await this.passwordService.hash(dto.password);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        name: dto.name,
+        username,
+        passwordHash,
+        profile: { create: {} },
+        preferences: { create: {} },
+      },
+    });
+
+    this.logger.log(`New local user created: ${user.email} (${user.username})`);
+    return this.issueAuthResult(user, ipAddress, userAgent);
+  }
+
+  async login(
+    dto: LoginDto,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<OAuthResult> {
+    if (!this.config.auth.localEnabled) {
+      throw new ForbiddenException("Local authentication is disabled");
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    const valid = user?.passwordHash
+      ? await this.passwordService.verify(dto.password, user.passwordHash)
+      : false;
+
+    if (!user || !valid) {
+      throw new UnauthorizedException("Invalid email or password");
+    }
+
+    return this.issueAuthResult(user, ipAddress, userAgent);
+  }
 
   // ---------------------------------------------------------------------------
   // OAuth Login
@@ -43,7 +109,7 @@ export class AuthService {
     if (!user) {
       const username = await generateUniqueUsername(
         this.prisma,
-        userData.name || userData.email.split('@')[0] || 'user',
+        userData.name || userData.email.split("@")[0] || "user",
       );
 
       user = await this.prisma.user.create({
@@ -83,9 +149,19 @@ export class AuthService {
     });
 
     // Create or reuse session
-    const session = await this.createSession(user.id, ipAddress, userAgent);
+    return this.issueAuthResult(user, ipAddress, userAgent);
+  }
 
-    // Generate JWT
+  // ---------------------------------------------------------------------------
+  // Session Management
+  // ---------------------------------------------------------------------------
+
+  private async issueAuthResult(
+    user: { id: string; email: string; roles: JwtPayload["roles"] },
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<OAuthResult> {
+    const session = await this.createSession(user.id, ipAddress, userAgent);
     const token = this.generateJwt({
       sub: user.id,
       email: user.email,
@@ -105,15 +181,7 @@ export class AuthService {
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Session Management
-  // ---------------------------------------------------------------------------
-
-  async createSession(
-    userId: string,
-    ipAddress?: string,
-    userAgent?: string,
-  ) {
+  async createSession(userId: string, ipAddress?: string, userAgent?: string) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + this.config.session.ttlDays);
 
@@ -159,7 +227,7 @@ export class AuthService {
     });
 
     if (!session) {
-      throw new UnauthorizedException('Session not found');
+      throw new UnauthorizedException("Session not found");
     }
 
     if (new Date() > session.expiresAt) {
@@ -167,7 +235,7 @@ export class AuthService {
         where: { id: session.id },
         data: { isValid: false },
       });
-      throw new UnauthorizedException('Session expired');
+      throw new UnauthorizedException("Session expired");
     }
 
     // Token reuse detection
@@ -183,7 +251,7 @@ export class AuthService {
           data: { isValid: false },
         });
         throw new UnauthorizedException(
-          'Session invalidated due to token reuse',
+          "Session invalidated due to token reuse",
         );
       }
       // Same family = race condition from multiple tabs, allow it
@@ -267,7 +335,7 @@ export class AuthService {
   async getUserSessions(userId: string) {
     return this.prisma.session.findMany({
       where: { userId, isValid: true, expiresAt: { gt: new Date() } },
-      orderBy: { lastActiveAt: 'desc' },
+      orderBy: { lastActiveAt: "desc" },
     });
   }
 
@@ -278,7 +346,7 @@ export class AuthService {
         select: { userId: true },
       });
       if (!session || session.userId !== userId) {
-        throw new ForbiddenException('Cannot invalidate this session');
+        throw new ForbiddenException("Cannot invalidate this session");
       }
     }
     await this.prisma.session.update({
@@ -306,7 +374,7 @@ export class AuthService {
   // JWT
   // ---------------------------------------------------------------------------
 
-  generateJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
+  generateJwt(payload: Omit<JwtPayload, "iat" | "exp">): string {
     return this.jwtService.sign(payload);
   }
 }

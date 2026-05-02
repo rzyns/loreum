@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": "./",
+    "experimentalDecorators": true,
     "paths": {
       "generated/prisma": ["./generated/prisma"]
     }
