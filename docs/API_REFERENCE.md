@@ -709,7 +709,9 @@ Authentication required via the same session cookie or bearer token.
 
 ## MCP Server
 
-The MCP server exposes Loreum's worldstate to AI assistants via the [Model Context Protocol](https://modelcontextprotocol.io). It runs as a stdio transport for local integration with Claude Desktop, Claude Code, Cursor, and other MCP-compatible clients.
+The MCP server exposes Loreum's worldstate to AI assistants via the [Model Context Protocol](https://modelcontextprotocol.io). It supports local stdio integration for Claude Desktop, Claude Code, Cursor, and other MCP-compatible clients; controlled HTTP deployments are supported but must remain read-only by default.
+
+Project API keys are scoped to one project and have `READ_ONLY` or `READ_WRITE` permissions. `READ_ONLY` keys may call read endpoints only. `READ_WRITE` keys may mutate only the project they were issued for. Project-scoped API keys must not be accepted for account-level operations such as creating new projects.
 
 ### Connection
 
@@ -730,10 +732,15 @@ The MCP server exposes Loreum's worldstate to AI assistants via the [Model Conte
 
 ### Environment Variables
 
-| Variable           | Required | Default                    | Notes                           |
-| ------------------ | -------- | -------------------------- | ------------------------------- |
-| `MCP_API_BASE_URL` | no       | `http://localhost:3021/v1` | Loreum API base URL             |
-| `MCP_API_TOKEN`    | no       | -                          | Bearer token for authentication |
+| Variable              | Required | Default                    | Notes                                                                 |
+| --------------------- | -------- | -------------------------- | --------------------------------------------------------------------- |
+| `MCP_API_BASE_URL`    | no       | `http://localhost:3021/v1` | Loreum API base URL                                                   |
+| `MCP_API_TOKEN`       | no       | -                          | Server-to-API project API key; use a placeholder in examples          |
+| `MCP_TRANSPORT`       | no       | `stdio`                    | `stdio` for local clients, `http` for controlled server deployments   |
+| `MCP_HTTP_AUTH_TOKEN` | HTTP yes | -                          | Client-to-MCP bearer token for HTTP transport                         |
+| `MCP_READ_ONLY`       | no       | `true` for HTTP            | Read-only mode; HTTP deployments should leave this true by default    |
+| `MCP_ENABLE_WRITES`   | no       | `false`                    | Explicit write opt-in required before any HTTP write tools are listed |
+| `MCP_WRITE_TOOLS`     | no       | empty                      | Comma-separated mutation allowlist, e.g. `create_entity`              |
 
 ### Resources
 
@@ -828,6 +835,10 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 **API call:** `GET /projects/{projectSlug}/style-guide` (+ scene context resolution)
 
 ### Mutation Tools
+
+Mutation tools are hidden from read-only MCP discovery. For remote HTTP deployments, `MCP_READ_ONLY=false` is not sufficient by itself; writes require `MCP_ENABLE_WRITES=true` and an explicit `MCP_WRITE_TOOLS` allowlist after API authorization tests prove read/write permission and project-scope enforcement. Start any approved write-capable smoke test with `create_entity` against a disposable project only.
+
+The current MCP mutation handlers call Loreum API mutation routes directly. They do not yet represent the planned review-queue flow.
 
 #### `create_entity` - Built
 

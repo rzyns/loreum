@@ -26,7 +26,7 @@
 
 Loreum is a database for fictional worlds. Track characters, relationships, timelines, organizations, maps, lore, and story structure in a purpose-built platform with instant search across everything. No scattered files, no lost notes, no contradictions.
 
-AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant, and it reads your entire world: entities, relationships, timeline, lore, style guide, and storyboard. It can also propose changes that land in a review queue for you to accept, edit, or reject before anything touches your canon.
+AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant, and it reads your entire world: entities, relationships, timeline, lore, style guide, and storyboard. Write-capable MCP tools are guarded separately and should stay disabled for remote deployments until the operator explicitly opts in.
 
 **For novelists, screenwriters, game designers, tabletop RPG game masters, comic book writers, and anyone building a fictional universe that needs structure.**
 
@@ -38,8 +38,8 @@ AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant
 - **Lore Wiki** - Canonical world articles with entity mentions, categories, and tags
 - **Storyboard** - Plotlines, works, chapters, and scenes cross-referenced to your world data
 - **Style Guide** - Voice, tone, POV, pacing, dialogue rules, scene overrides, and per-character voice notes
-- **AI Integration (MCP)** - 11 read tools and 16 write tools so any MCP-compatible AI can query and modify your world
-- **Review Queue** - AI-proposed changes land in a staging area with diff view. Accept, edit, or reject individually or in batch
+- **AI Integration (MCP)** - Read tools for MCP-compatible AI, with remote write exposure disabled by default and controlled by explicit server-side allowlists
+- **Review Queue** - Planned safety path for AI-proposed changes with diff review before canon updates
 - **API Key Auth** - Project-scoped keys with read-only or read-write permissions for MCP authentication
 - **Public Wiki** - Share your world as a read-only site while keeping secrets and drafts private
 - **Maps** - Upload map images and pin locations with coordinates
@@ -49,7 +49,7 @@ AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant
 
 1. **Build your world** in the Loreum web app with entities, relationships, timelines, lore, and a style guide
 2. **Add AI** by bringing your own via MCP or using the built-in assistant. Build solo or invite collaborators
-3. **Write with context** as AI reads your canon to generate grounded content. Proposed changes go through a review queue
+3. **Write with context** as AI reads your canon to generate grounded content; review-queue-backed AI suggestions are planned, while current remote MCP deployments should remain read-only by default
 
 ## Tech Stack
 
@@ -103,7 +103,7 @@ API: `http://localhost:3021` | Web: `http://localhost:3020` | Swagger: `http://l
 
 ## MCP Server
 
-Connect any MCP-compatible AI to read and write your world data. Generate a project-scoped API key from project settings, then configure your client:
+Connect any MCP-compatible AI to your world data. Generate a project-scoped API key from project settings, then configure your client:
 
 ```json
 {
@@ -120,7 +120,7 @@ Connect any MCP-compatible AI to read and write your world data. Generate a proj
 }
 ```
 
-All write operations go through the review queue. [Full MCP documentation](https://loreum.app/docs/mcp).
+Project API keys are scoped to one project and may be read-only or read-write. Remote HTTP MCP deployments must stay read-only by default; exposing mutation tools requires an explicit server-side write opt-in (`MCP_ENABLE_WRITES=true`) plus a narrow `MCP_WRITE_TOOLS` allowlist after API permission and project-scope enforcement has been verified. The current direct-write MCP tools are not a substitute for the planned review queue. [Full MCP documentation](https://loreum.app/docs/mcp).
 
 ## Project Structure
 

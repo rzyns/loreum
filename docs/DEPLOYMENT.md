@@ -110,7 +110,17 @@ docker compose \
 
 ## MCP deployment note
 
-The MCP server image is buildable, but the recommended staging shape is still stdio/local use rather than exposing MCP over a network port. For live agent testing, prefer a read-only project API key where possible because the older MCP mutation tools still perform direct writes.
+The MCP server image is buildable, but remote/network deployments must be read-only by default. Treat `MCP_HTTP_AUTH_TOKEN` as client-to-MCP transport auth only; it does not grant permission to mutate Loreum data. The MCP server's server-to-API credential (`MCP_API_TOKEN`) should be a project-scoped API key, preferably `READ_ONLY` for normal remote use.
+
+Do not enable write-capable HTTP MCP just by setting `MCP_READ_ONLY=false`. Safe write exposure requires all of the following:
+
+- API-side enforcement that `READ_ONLY` API keys cannot call POST/PATCH/PUT/DELETE routes.
+- API-side enforcement that `READ_WRITE` API keys can only read or mutate the project they were issued for.
+- Explicit MCP write opt-in with `MCP_ENABLE_WRITES=true`.
+- A narrow `MCP_WRITE_TOOLS` allowlist; start with `create_entity` only for disposable-project smoke testing.
+- Rollback proof that disabling write mode removes all mutation tools from discovery again.
+
+Keep examples placeholder-only and never commit real `MCP_HTTP_AUTH_TOKEN`, `MCP_API_TOKEN`, API keys, or stack environment values.
 
 ## Reverse proxy notes
 
