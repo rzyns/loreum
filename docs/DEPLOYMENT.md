@@ -4,25 +4,25 @@ This guide documents the currently supported Docker deployment path for Loreum. 
 
 ## Current deployment shape
 
-| Service      | Image/build source                    | Purpose                                                             |
-| ------------ | ------------------------------------- | ------------------------------------------------------------------- |
-| `web`        | `apps/web/Dockerfile`                 | Next.js web application on port `3020`                              |
-| `api`        | `apps/api/Dockerfile`                 | NestJS API on port `3021`                                           |
-| `migrate`    | `apps/api/Dockerfile`                 | One-shot Prisma `migrate deploy` job                                |
-| `postgres`   | `postgres:18-alpine`                  | Primary data store                                                  |
-| `redis`      | `redis:7-alpine`                      | BullMQ/cache backing service                                        |
-| `opensearch` | `opensearchproject/opensearch:2.14.0` | Optional; behind the `search` Compose profile                       |
-| `mcp`        | `apps/mcp/Dockerfile`                 | Buildable stdio MCP image; not exposed by the homelab Compose stack |
+| Service      | Image/build source                    | Purpose                                                       |
+| ------------ | ------------------------------------- | ------------------------------------------------------------- |
+| `web`        | `apps/web/Dockerfile`                 | Next.js web application on port `3020`                        |
+| `api`        | `apps/api/Dockerfile`                 | NestJS API on port `3021`                                     |
+| `migrate`    | `apps/api/Dockerfile`                 | One-shot Prisma `migrate deploy` job                          |
+| `postgres`   | `postgres:18-alpine`                  | Primary data store                                            |
+| `redis`      | `redis:7-alpine`                      | BullMQ/cache backing service                                  |
+| `opensearch` | `opensearchproject/opensearch:2.14.0` | Optional; behind the `search` Compose profile                 |
+| `mcp`        | `apps/mcp/Dockerfile`                 | Optional HTTP MCP server on port `3022`; read-only by default |
 
-The homelab Compose stack binds service ports to loopback by default. Put Caddy, Traefik, Nginx, Cloudflare Tunnel, or another trusted reverse proxy in front of `web` and `api` if you want LAN or Internet access.
+The homelab Compose stack binds service ports to loopback by default. Put Caddy, Traefik, Nginx, Cloudflare Tunnel, or another trusted reverse proxy in front of `web`, `api`, and `mcp` if you want LAN or Internet access.
 
 ## Files
 
 - `.dockerignore` — excludes local dependencies, build outputs, caches, VCS metadata, and `.env*` secrets from Docker build contexts.
 - `apps/api/Dockerfile` — builds the API, Prisma client, migrations/runtime artifacts, and runs as the non-root `node` user.
 - `apps/web/Dockerfile` — builds the Next.js app and runs `next start` as the non-root `node` user.
-- `apps/mcp/Dockerfile` — builds the stdio MCP server and runs `node apps/mcp/dist/index.js` as the non-root `node` user.
-- `docker-compose.homelab.yml` — API/web/Postgres/Redis/migration deployment stack.
+- `apps/mcp/Dockerfile` — builds the MCP server image and runs `node apps/mcp/dist/index.js` as the non-root `node` user.
+- `docker-compose.homelab.yml` — API/web/MCP/Postgres/Redis/migration deployment stack.
 - `.env.homelab.example` — safe placeholder environment template. Copy it to `.env.homelab`; never commit the filled file.
 
 ## Build images directly

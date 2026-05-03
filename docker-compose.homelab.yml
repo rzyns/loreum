@@ -133,6 +133,40 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  mcp:
+    image: dcr.svc.dziurzynscy.com/loreum-mcp:${LOREUM_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/mcp/Dockerfile
+    container_name: loreum-mcp${CONTAINER_SUFFIX:-}
+    environment:
+      NODE_ENV: production
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3022
+      MCP_API_BASE_URL: ${MCP_API_BASE_URL:-http://api:3021/v1}
+      MCP_API_TOKEN: ${MCP_API_TOKEN:?MCP_API_TOKEN is required}
+      MCP_HTTP_AUTH_TOKEN: ${MCP_HTTP_AUTH_TOKEN:?MCP_HTTP_AUTH_TOKEN is required}
+      MCP_READ_ONLY: ${MCP_READ_ONLY:-true}
+      MCP_ENABLE_WRITES: ${MCP_ENABLE_WRITES:-false}
+      MCP_WRITE_TOOLS: ${MCP_WRITE_TOOLS:-}
+    ports:
+      - "${MCP_BIND_ADDR:-127.0.0.1}:${MCP_HTTP_PORT:-3022}:3022"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3022/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
   opensearch:
     profiles: ["search"]
     image: opensearchproject/opensearch:2.14.0
