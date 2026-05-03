@@ -31,19 +31,28 @@ function parseBoolean(value: string | undefined, defaultValue: boolean) {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
-const HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>(["create_entity"]);
+const DEFAULT_HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>(["create_entity"]);
+
+function httpWriteAllowlist(env: NodeJS.ProcessEnv) {
+  if (parseBoolean(env.MCP_ALLOW_ALL_WRITE_TOOLS, false)) {
+    return new Set<WriteToolName>(WRITE_TOOL_NAMES);
+  }
+
+  return DEFAULT_HTTP_WRITE_ALLOWLIST;
+}
 
 function parseWriteTools(env: NodeJS.ProcessEnv, transport: McpTransport) {
   if (transport !== "http") return WRITE_TOOL_NAMES;
   if (!parseBoolean(env.MCP_ENABLE_WRITES, false)) return [];
 
+  const allowedTools = httpWriteAllowlist(env);
   const requestedTools = (env.MCP_WRITE_TOOLS ?? "")
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean);
 
   return requestedTools.filter((name): name is WriteToolName =>
-    HTTP_WRITE_ALLOWLIST.has(name as WriteToolName),
+    allowedTools.has(name as WriteToolName),
   );
 }
 

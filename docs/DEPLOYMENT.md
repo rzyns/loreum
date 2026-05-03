@@ -118,6 +118,7 @@ Do not enable write-capable HTTP MCP just by setting `MCP_READ_ONLY=false`. Safe
 - API-side enforcement that `READ_WRITE` API keys can only read or mutate the project they were issued for.
 - Explicit MCP write opt-in with `MCP_ENABLE_WRITES=true`.
 - A narrow `MCP_WRITE_TOOLS` allowlist; start with `create_entity` only for disposable-project smoke testing.
+- For staging/dev-only testing of every implemented write tool, set `MCP_ALLOW_ALL_WRITE_TOOLS=true` and explicitly list the desired tools in `MCP_WRITE_TOOLS`.
 - Rollback proof that disabling write mode removes all mutation tools from discovery again.
 
 Keep examples placeholder-only and never commit real `MCP_HTTP_AUTH_TOKEN`, `MCP_API_TOKEN`, API keys, or stack environment values.

@@ -81,6 +81,32 @@ test("configFromEnv requires explicit HTTP write opt-in and allowlist", () => {
   );
 });
 
+test("configFromEnv allows all HTTP write tools with explicit staging override", () => {
+  assert.deepEqual(
+    configFromEnv({
+      MCP_TRANSPORT: "http",
+      MCP_HTTP_AUTH_TOKEN: "secret",
+      MCP_ENABLE_WRITES: "true",
+      MCP_ALLOW_ALL_WRITE_TOOLS: "true",
+      MCP_WRITE_TOOLS:
+        "create_entity,update_entity,create_relationship,create_lore_article",
+    }),
+    {
+      transport: "http",
+      host: "0.0.0.0",
+      port: 3022,
+      httpAuthToken: "secret",
+      readOnly: false,
+      writeTools: [
+        "create_entity",
+        "update_entity",
+        "create_relationship",
+        "create_lore_article",
+      ],
+    },
+  );
+});
+
 test("configFromEnv ignores unknown HTTP write tools", () => {
   assert.deepEqual(
     configFromEnv({
@@ -146,7 +172,7 @@ test("HTTP mode with MCP_READ_ONLY=false alone still excludes mutation tools", a
   assert.equal(toolNames.includes("create_lore_article"), false);
 });
 
-test("HTTP mode exposes only explicitly allowlisted create_entity write tool", async () => {
+test("HTTP mode exposes only explicitly allowlisted create_entity write tool by default", async () => {
   const toolNames = await listHttpToolNames({
     ...configFromEnv({
       MCP_TRANSPORT: "http",
@@ -162,6 +188,26 @@ test("HTTP mode exposes only explicitly allowlisted create_entity write tool", a
   assert.equal(toolNames.includes("update_entity"), false);
   assert.equal(toolNames.includes("create_relationship"), false);
   assert.equal(toolNames.includes("create_lore_article"), false);
+});
+
+test("HTTP mode exposes every write tool when explicit staging override is enabled", async () => {
+  const toolNames = await listHttpToolNames({
+    ...configFromEnv({
+      MCP_TRANSPORT: "http",
+      MCP_HOST: "127.0.0.1",
+      MCP_HTTP_AUTH_TOKEN: "secret",
+      MCP_ENABLE_WRITES: "true",
+      MCP_ALLOW_ALL_WRITE_TOOLS: "true",
+      MCP_WRITE_TOOLS:
+        "create_entity,update_entity,create_relationship,create_lore_article",
+    }),
+    port: 0,
+  });
+
+  assert.equal(toolNames.includes("create_entity"), true);
+  assert.equal(toolNames.includes("update_entity"), true);
+  assert.equal(toolNames.includes("create_relationship"), true);
+  assert.equal(toolNames.includes("create_lore_article"), true);
 });
 
 test("HTTP mode exposes health, rejects unauthenticated MCP requests, and lists read-only tools", async () => {
