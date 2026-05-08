@@ -210,6 +210,12 @@ export default function McpDocsPage() {
             enforcement, <code>MCP_ENABLE_WRITES=true</code>, and a narrow{" "}
             <code>MCP_WRITE_TOOLS</code> allowlist. Start with{" "}
             <code>create_entity</code> only for disposable-project smoke tests.
+            Successful writes return a typed post-write envelope that preserves
+            the raw domain record under <code>record</code> and adds
+            content/display type, project slug, admin/project URLs, public/world
+            URL hints when visibility is proven, visibility rationale, and next
+            actions. Public links are omitted when content is private or public
+            readability is unknown.
           </p>
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
@@ -225,13 +231,16 @@ export default function McpDocsPage() {
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">create_entity</td>
                   <td className="px-4 py-2">
-                    Create a character, location, organization, or custom item
+                    Create a character, location, organization, or item; returns
+                    the record plus admin/public route affordances, visibility,
+                    and next actions
                   </td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-4 py-2 font-mono text-xs">update_entity</td>
                   <td className="px-4 py-2">
-                    Partial update to an existing entity
+                    Partial update to an existing entity; returns updated route
+                    affordances and notes slug changes when applicable
                   </td>
                 </tr>
                 <tr className="border-b">
@@ -239,7 +248,9 @@ export default function McpDocsPage() {
                     create_relationship
                   </td>
                   <td className="px-4 py-2">
-                    Create a relationship between two entities
+                    Create a relationship between two entities; returns
+                    list-only relationship affordances because relationship
+                    detail routes are not advertised
                   </td>
                 </tr>
                 <tr>
@@ -247,7 +258,9 @@ export default function McpDocsPage() {
                     create_lore_article
                   </td>
                   <td className="px-4 py-2">
-                    Create a lore article linked to entities
+                    Create a lore article linked to entities; returns the record
+                    plus admin/project URL, public/world hint when proven,
+                    visibility rationale, and next actions
                   </td>
                 </tr>
               </tbody>

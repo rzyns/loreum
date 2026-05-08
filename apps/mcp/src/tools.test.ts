@@ -51,6 +51,17 @@ function expectJsonContent(result: unknown, value: unknown) {
   });
 }
 
+function parseJsonContent(result: unknown) {
+  assert.ok(result && typeof result === "object", "result should be object");
+  const content = (result as { content?: Array<{ text?: string }> }).content;
+  assert.ok(Array.isArray(content), "result should have content array");
+  const text = content[0]?.text;
+  if (typeof text !== "string") {
+    assert.fail("first content item should contain JSON text");
+  }
+  return JSON.parse(text);
+}
+
 test("registerTools registers all existing MCP tools and resources", () => {
   const { server, registeredTools, registeredResources } = createFakeServer();
   const { api } = createApi({});
@@ -157,6 +168,215 @@ test("registerTools ignores unknown write-tool allowlist entries", () => {
   assert.equal(registeredTools.has("update_entity"), false);
   assert.equal(registeredTools.has("create_relationship"), false);
   assert.equal(registeredTools.has("create_lore_article"), false);
+});
+
+test("create_entity returns post-write affordance envelope with typed entity admin and public route hints", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = {
+    id: "ent_1",
+    type: "CHARACTER",
+    slug: "ari",
+    name: "Ari",
+    project: { visibility: "PUBLIC" },
+  };
+  const { api, apiCalls } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["create_entity"] });
+
+  const createEntity = registeredTools.get("create_entity");
+  assert.ok(createEntity, "create_entity handler should be registered");
+
+  const result = await createEntity({
+    projectSlug: "test world",
+    type: "CHARACTER",
+    name: "Ari",
+  });
+  const envelope = parseJsonContent(result);
+
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/test world/entities",
+      options: {
+        method: "POST",
+        body: JSON.stringify({ type: "CHARACTER", name: "Ari" }),
+      },
+    },
+  ]);
+  assert.deepEqual(envelope, {
+    ok: true,
+    operation: "create",
+    contentType: "entity",
+    displayType: "Character",
+    projectSlug: "test world",
+    id: "ent_1",
+    slug: "ari",
+    title: "Ari",
+    record,
+    links: {
+      api: "/projects/test%20world/entities/ari",
+      admin: "/projects/test%20world/entities/characters/ari",
+      public: "/worlds/test%20world/entities/ari",
+      list: "/projects/test%20world/entities/characters",
+    },
+    visibility: {
+      projectVisibility: "PUBLIC",
+      publicReadable: true,
+      reason:
+        "Project visibility is PUBLIC, so the public world route is expected to be readable.",
+    },
+    nextActions: [
+      {
+        label: "Open Character in project admin",
+        kind: "open",
+        href: "/projects/test%20world/entities/characters/ari",
+      },
+      {
+        label: "Verify public Character page",
+        kind: "verify",
+        href: "/worlds/test%20world/entities/ari",
+        note: "Public route is expected to work because project visibility is PUBLIC.",
+      },
+      {
+        label: "Link related lore or relationships",
+        kind: "link",
+        tool: "create_relationship",
+      },
+    ],
+  });
+});
+
+test("update_entity returns new entity affordances and records previous route when slug changes", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = {
+    id: "ent_2",
+    type: "ITEM",
+    slug: "crystal-key",
+    name: "Crystal Key",
+  };
+  const { api } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["update_entity"] });
+
+  const updateEntity = registeredTools.get("update_entity");
+  assert.ok(updateEntity, "update_entity handler should be registered");
+
+  const envelope = parseJsonContent(
+    await updateEntity({
+      projectSlug: "demo",
+      entitySlug: "old-key",
+      updates: { name: "Crystal Key" },
+    }),
+  );
+
+  assert.equal(envelope.operation, "update");
+  assert.equal(envelope.displayType, "Item");
+  assert.equal(envelope.slug, "crystal-key");
+  assert.equal(
+    envelope.links.admin,
+    "/projects/demo/entities/items/crystal-key",
+  );
+  assert.equal(
+    envelope.links.previousAdmin,
+    "/projects/demo/entities/items/old-key",
+  );
+  assert.equal(envelope.links.public, undefined);
+  assert.deepEqual(envelope.visibility, {
+    publicReadable: "unknown",
+    reason:
+      "Project visibility was not returned with the write response; verify public readability before sharing public links.",
+  });
+  assert.ok(
+    envelope.nextActions.some((action: { note?: string }) =>
+      action.note?.includes("slug changed"),
+    ),
+  );
+});
+
+test("create_relationship returns list-only affordances without implying a detail route", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = {
+    id: "rel_1",
+    type: "ally",
+    label: "Ally",
+    sourceEntity: { slug: "ari", name: "Ari" },
+    targetEntity: { slug: "bri", name: "Bri" },
+    project: { visibility: "PRIVATE" },
+  };
+  const { api } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["create_relationship"] });
+
+  const createRelationship = registeredTools.get("create_relationship");
+  assert.ok(
+    createRelationship,
+    "create_relationship handler should be registered",
+  );
+
+  const envelope = parseJsonContent(
+    await createRelationship({
+      projectSlug: "demo",
+      sourceEntitySlug: "ari",
+      targetEntitySlug: "bri",
+      type: "ally",
+    }),
+  );
+
+  assert.equal(envelope.contentType, "relationship");
+  assert.equal(envelope.id, "rel_1");
+  assert.equal(envelope.links.admin, "/projects/demo/relationships");
+  assert.equal(envelope.links.public, undefined);
+  assert.equal(envelope.links.detail, undefined);
+  assert.equal(envelope.visibility.publicReadable, false);
+  assert.equal(
+    envelope.visibility.reason,
+    "Project visibility is PRIVATE, so no public reader route is advertised.",
+  );
+  assert.ok(
+    envelope.nextActions.some(
+      (action: { note?: string }) =>
+        action.note ===
+        "Relationships currently expose list pages only; no detail route is advertised.",
+    ),
+  );
+});
+
+test("create_lore_article returns lore affordance envelope with public visibility unknown when not proven", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = { id: "lore_1", slug: "founding", title: "Founding" };
+  const { api } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["create_lore_article"] });
+
+  const createLoreArticle = registeredTools.get("create_lore_article");
+  assert.ok(
+    createLoreArticle,
+    "create_lore_article handler should be registered",
+  );
+
+  const envelope = parseJsonContent(
+    await createLoreArticle({
+      projectSlug: "demo",
+      title: "Founding",
+      content: "Once...",
+    }),
+  );
+
+  assert.deepEqual(envelope.links, {
+    api: "/projects/demo/lore/founding",
+    admin: "/projects/demo/lore/founding",
+    list: "/projects/demo/lore",
+  });
+  assert.equal(envelope.contentType, "lore_article");
+  assert.equal(envelope.displayType, "Lore article");
+  assert.equal(envelope.visibility.publicReadable, "unknown");
+  assert.equal(envelope.visibility.projectVisibility, undefined);
+  assert.ok(
+    envelope.nextActions.some(
+      (action: { label?: string; kind?: string }) =>
+        action.label === "Open Lore article in project admin" &&
+        action.kind === "open",
+    ),
+  );
 });
 
 test("registerTools wires list_projects through injectable API client", async () => {

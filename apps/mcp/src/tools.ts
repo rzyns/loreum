@@ -48,6 +48,364 @@ function pathSegment(value: string) {
   return encodeURIComponent(value);
 }
 
+type WriteOperation = "create" | "update";
+type ContentType = "entity" | "lore_article" | "relationship";
+type PublicReadable = boolean | "unknown";
+
+type WriteAffordanceLinkSet = {
+  api?: string;
+  admin?: string;
+  public?: string;
+  list?: string;
+  previousAdmin?: string;
+  previousPublic?: string;
+};
+
+type WriteAffordanceNextAction = {
+  label: string;
+  kind: "open" | "verify" | "link" | "search" | "review";
+  href?: string;
+  tool?: string;
+  note?: string;
+};
+
+type WriteAffordanceResponse<T> = {
+  ok: true;
+  operation: WriteOperation;
+  contentType: ContentType;
+  displayType: string;
+  projectSlug: string;
+  id?: string;
+  slug?: string;
+  title?: string;
+  record: T;
+  links: WriteAffordanceLinkSet;
+  visibility: {
+    projectVisibility?: string;
+    publicReadable: PublicReadable;
+    reason: string;
+  };
+  nextActions: WriteAffordanceNextAction[];
+};
+
+type RecordLike = Record<string, unknown>;
+
+function asRecord(value: unknown): RecordLike {
+  return value && typeof value === "object" ? (value as RecordLike) : {};
+}
+
+function stringField(record: RecordLike, field: string) {
+  const value = record[field];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function nestedStringField(
+  record: RecordLike,
+  objectField: string,
+  field: string,
+) {
+  const nested = asRecord(record[objectField]);
+  return stringField(nested, field);
+}
+
+function titleCase(value: string) {
+  return value
+    .split(/[_ -]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function entityDisplayType(type: string | undefined) {
+  switch (type) {
+    case "CHARACTER":
+      return "Character";
+    case "LOCATION":
+      return "Location";
+    case "ORGANIZATION":
+      return "Organization";
+    case "ITEM":
+      return "Item";
+    default:
+      return type ? titleCase(type) : "Entity";
+  }
+}
+
+function entityTypeRouteSegment(type: string | undefined) {
+  switch (type) {
+    case "CHARACTER":
+      return "characters";
+    case "LOCATION":
+      return "locations";
+    case "ORGANIZATION":
+      return "organizations";
+    case "ITEM":
+      return "items";
+    default:
+      return `${(type ?? "entities").toLowerCase().replace(/_/g, "-")}s`;
+  }
+}
+
+function visibilityFor(record: RecordLike) {
+  const projectVisibility = nestedStringField(record, "project", "visibility");
+
+  if (projectVisibility === "PUBLIC" || projectVisibility === "UNLISTED") {
+    return {
+      projectVisibility,
+      publicReadable: true as const,
+      reason: `Project visibility is ${projectVisibility}, so the public world route is expected to be readable.`,
+    };
+  }
+
+  if (projectVisibility === "PRIVATE") {
+    return {
+      projectVisibility,
+      publicReadable: false as const,
+      reason:
+        "Project visibility is PRIVATE, so no public reader route is advertised.",
+    };
+  }
+
+  return {
+    publicReadable: "unknown" as const,
+    reason:
+      "Project visibility was not returned with the write response; verify public readability before sharing public links.",
+  };
+}
+
+function maybePublicLink(
+  visibility: ReturnType<typeof visibilityFor>,
+  href: string,
+) {
+  return visibility.publicReadable === true ? href : undefined;
+}
+
+function buildEntityAffordance<T>(params: {
+  operation: WriteOperation;
+  projectSlug: string;
+  record: T;
+  previousSlug?: string;
+}): WriteAffordanceResponse<T> {
+  const record = asRecord(params.record);
+  const type = stringField(record, "type");
+  const displayType = entityDisplayType(type);
+  const typeSegment = entityTypeRouteSegment(type);
+  const slug = stringField(record, "slug");
+  const id = stringField(record, "id");
+  const title = stringField(record, "name") ?? stringField(record, "title");
+  const project = pathSegment(params.projectSlug);
+  const encodedSlug = slug ? pathSegment(slug) : undefined;
+  const previousSlug = params.previousSlug;
+  const encodedPreviousSlug = previousSlug
+    ? pathSegment(previousSlug)
+    : undefined;
+  const visibility = visibilityFor(record);
+  const admin = encodedSlug
+    ? `/projects/${project}/entities/${typeSegment}/${encodedSlug}`
+    : `/projects/${project}/entities/${typeSegment}`;
+  const publicHref = encodedSlug
+    ? `/worlds/${project}/entities/${encodedSlug}`
+    : undefined;
+  const links: WriteAffordanceLinkSet = {
+    api: encodedSlug
+      ? `/projects/${project}/entities/${encodedSlug}`
+      : undefined,
+    admin,
+    public: publicHref ? maybePublicLink(visibility, publicHref) : undefined,
+    list: `/projects/${project}/entities/${typeSegment}`,
+  };
+
+  if (encodedPreviousSlug && encodedPreviousSlug !== encodedSlug) {
+    links.previousAdmin = `/projects/${project}/entities/${typeSegment}/${encodedPreviousSlug}`;
+    const previousPublic = `/worlds/${project}/entities/${encodedPreviousSlug}`;
+    links.previousPublic = maybePublicLink(visibility, previousPublic);
+  }
+
+  const nextActions: WriteAffordanceNextAction[] = [
+    {
+      label: `Open ${displayType} in project admin`,
+      kind: "open",
+      href: admin,
+    },
+  ];
+
+  if (links.public) {
+    nextActions.push({
+      label: `Verify public ${displayType} page`,
+      kind: "verify",
+      href: links.public,
+      note: `Public route is expected to work because project visibility is ${visibility.projectVisibility}.`,
+    });
+  } else {
+    nextActions.push({
+      label: `Verify ${displayType} public readability before sharing`,
+      kind: "verify",
+      note: visibility.reason,
+    });
+  }
+
+  if (encodedPreviousSlug && encodedPreviousSlug !== encodedSlug) {
+    nextActions.push({
+      label: "Review updated entity slug",
+      kind: "review",
+      href: admin,
+      note: `Entity slug changed from ${previousSlug} to ${slug}; use the new admin URL.`,
+    });
+  }
+
+  nextActions.push({
+    label: "Link related lore or relationships",
+    kind: "link",
+    tool: "create_relationship",
+  });
+
+  return {
+    ok: true,
+    operation: params.operation,
+    contentType: "entity",
+    displayType,
+    projectSlug: params.projectSlug,
+    id,
+    slug,
+    title,
+    record: params.record,
+    links,
+    visibility,
+    nextActions,
+  };
+}
+
+function buildLoreArticleAffordance<T>(params: {
+  operation: WriteOperation;
+  projectSlug: string;
+  record: T;
+}): WriteAffordanceResponse<T> {
+  const record = asRecord(params.record);
+  const slug = stringField(record, "slug");
+  const id = stringField(record, "id");
+  const title = stringField(record, "title") ?? stringField(record, "name");
+  const project = pathSegment(params.projectSlug);
+  const encodedSlug = slug ? pathSegment(slug) : undefined;
+  const visibility = visibilityFor(record);
+  const admin = encodedSlug
+    ? `/projects/${project}/lore/${encodedSlug}`
+    : `/projects/${project}/lore`;
+  const publicHref = encodedSlug
+    ? `/worlds/${project}/lore/${encodedSlug}`
+    : undefined;
+  const links: WriteAffordanceLinkSet = {
+    api: encodedSlug ? `/projects/${project}/lore/${encodedSlug}` : undefined,
+    admin,
+    public: publicHref ? maybePublicLink(visibility, publicHref) : undefined,
+    list: `/projects/${project}/lore`,
+  };
+
+  const nextActions: WriteAffordanceNextAction[] = [
+    { label: "Open Lore article in project admin", kind: "open", href: admin },
+  ];
+
+  if (links.public) {
+    nextActions.push({
+      label: "Verify public Lore article page",
+      kind: "verify",
+      href: links.public,
+      note: `Public route is expected to work because project visibility is ${visibility.projectVisibility}.`,
+    });
+  } else {
+    nextActions.push({
+      label: "Verify Lore article public readability before sharing",
+      kind: "verify",
+      note: visibility.reason,
+    });
+  }
+
+  nextActions.push({
+    label: "Check search/index consistency",
+    kind: "search",
+    tool: "search_project",
+  });
+
+  return {
+    ok: true,
+    operation: params.operation,
+    contentType: "lore_article",
+    displayType: "Lore article",
+    projectSlug: params.projectSlug,
+    id,
+    slug,
+    title,
+    record: params.record,
+    links,
+    visibility,
+    nextActions,
+  };
+}
+
+function buildRelationshipAffordance<T>(params: {
+  operation: WriteOperation;
+  projectSlug: string;
+  record: T;
+}): WriteAffordanceResponse<T> {
+  const record = asRecord(params.record);
+  const id = stringField(record, "id");
+  const title = stringField(record, "label") ?? stringField(record, "type");
+  const project = pathSegment(params.projectSlug);
+  const visibility = visibilityFor(record);
+  const publicHref = `/worlds/${project}/relationships`;
+  const links: WriteAffordanceLinkSet = {
+    api: id
+      ? `/projects/${project}/relationships/${pathSegment(id)}`
+      : undefined,
+    admin: `/projects/${project}/relationships`,
+    public: maybePublicLink(visibility, publicHref),
+    list: `/projects/${project}/relationships`,
+  };
+
+  const nextActions: WriteAffordanceNextAction[] = [
+    {
+      label: "Open relationships in project admin",
+      kind: "open",
+      href: links.admin,
+      note: "Relationships currently expose list pages only; no detail route is advertised.",
+    },
+  ];
+
+  const sourceSlug = nestedStringField(record, "sourceEntity", "slug");
+  const targetSlug = nestedStringField(record, "targetEntity", "slug");
+  for (const entitySlug of [sourceSlug, targetSlug]) {
+    if (entitySlug) {
+      nextActions.push({
+        label: `Open related entity ${entitySlug}`,
+        kind: "open",
+        href: `/worlds/${project}/entities/${pathSegment(entitySlug)}`,
+      });
+    }
+  }
+
+  if (links.public) {
+    nextActions.push({
+      label: "Verify public relationship list",
+      kind: "verify",
+      href: links.public,
+      note: `Public route is expected to work because project visibility is ${visibility.projectVisibility}.`,
+    });
+  }
+
+  return {
+    ok: true,
+    operation: params.operation,
+    contentType: "relationship",
+    displayType: "Relationship",
+    projectSlug: params.projectSlug,
+    id,
+    title,
+    record: params.record,
+    links,
+    visibility,
+    nextActions,
+  };
+}
+
 export function registerTools(
   server: ToolServer,
   api: ApiClient,
@@ -377,7 +735,8 @@ export function registerTools(
     server.registerTool(
       "create_entity",
       {
-        description: "Create a new entity in a project",
+        description:
+          "Create a new entity in a project and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
         inputSchema: {
           projectSlug: z.string(),
           type: z.enum(["CHARACTER", "LOCATION", "ORGANIZATION", "ITEM"]),
@@ -395,7 +754,13 @@ export function registerTools(
           method: "POST",
           body: JSON.stringify(data),
         });
-        return jsonContent(entity);
+        return jsonContent(
+          buildEntityAffordance({
+            operation: "create",
+            projectSlug,
+            record: entity,
+          }),
+        );
       },
     );
   }
@@ -404,7 +769,8 @@ export function registerTools(
     server.registerTool(
       "update_entity",
       {
-        description: "Update an existing entity",
+        description:
+          "Update an existing entity and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
         inputSchema: {
           projectSlug: z.string(),
           entitySlug: z.string(),
@@ -419,7 +785,14 @@ export function registerTools(
             body: JSON.stringify(updates),
           },
         );
-        return jsonContent(entity);
+        return jsonContent(
+          buildEntityAffordance({
+            operation: "update",
+            projectSlug,
+            record: entity,
+            previousSlug: entitySlug,
+          }),
+        );
       },
     );
   }
@@ -428,7 +801,8 @@ export function registerTools(
     server.registerTool(
       "create_relationship",
       {
-        description: "Create a relationship between two entities",
+        description:
+          "Create a relationship between two entities and return the record plus list-only admin/public affordances, visibility rationale, and next actions",
         inputSchema: {
           projectSlug: z.string(),
           sourceEntitySlug: z.string(),
@@ -444,7 +818,13 @@ export function registerTools(
           method: "POST",
           body: JSON.stringify(data),
         });
-        return jsonContent(rel);
+        return jsonContent(
+          buildRelationshipAffordance({
+            operation: "create",
+            projectSlug,
+            record: rel,
+          }),
+        );
       },
     );
   }
@@ -453,7 +833,8 @@ export function registerTools(
     server.registerTool(
       "create_lore_article",
       {
-        description: "Create a lore article linked to entities",
+        description:
+          "Create a lore article linked to entities and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
         inputSchema: {
           projectSlug: z.string(),
           title: z.string(),
@@ -468,7 +849,13 @@ export function registerTools(
           method: "POST",
           body: JSON.stringify(data),
         });
-        return jsonContent(article);
+        return jsonContent(
+          buildLoreArticleAffordance({
+            operation: "create",
+            projectSlug,
+            record: article,
+          }),
+        );
       },
     );
   }
