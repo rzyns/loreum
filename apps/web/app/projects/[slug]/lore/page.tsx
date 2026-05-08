@@ -8,6 +8,8 @@ import type { LoreArticleSummary } from "@loreum/types";
 import { Button } from "@loreum/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@loreum/ui/card";
 import { CreateLoreArticleDialog } from "@/components/dialogs/create-lore-article-dialog";
+import { WriteSuccessCard } from "@/components/write-success-card";
+import type { WriteSuccessAffordance } from "@/lib/write-affordances";
 import { Plus, ScrollText } from "lucide-react";
 
 export default function LorePage() {
@@ -15,6 +17,9 @@ export default function LorePage() {
   const [articles, setArticles] = useState<LoreArticleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [lastSuccess, setLastSuccess] = useState<WriteSuccessAffordance | null>(
+    null,
+  );
 
   useEffect(() => {
     api<LoreArticleSummary[]>(`/projects/${params.slug}/lore`)
@@ -23,10 +28,14 @@ export default function LorePage() {
       .finally(() => setLoading(false));
   }, [params.slug]);
 
-  const handleCreated = (article: LoreArticleSummary) => {
+  const handleCreated = (
+    article: LoreArticleSummary,
+    affordance: WriteSuccessAffordance,
+  ) => {
     setArticles((prev) =>
       [...prev, article].sort((a, b) => a.title.localeCompare(b.title)),
     );
+    setLastSuccess(affordance);
     setDialogOpen(false);
   };
 
@@ -52,6 +61,11 @@ export default function LorePage() {
           New article
         </Button>
       </div>
+
+      <WriteSuccessCard
+        affordance={lastSuccess}
+        onDismiss={() => setLastSuccess(null)}
+      />
 
       {articles.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">

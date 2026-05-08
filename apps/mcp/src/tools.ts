@@ -131,7 +131,16 @@ function entityDisplayType(type: string | undefined) {
   }
 }
 
-function entityTypeRouteSegment(type: string | undefined) {
+const missingItemTypeSlugRouteNote =
+  "The ITEM record did not include item.itemType.slug, so this envelope falls back to the project entity index instead of guessing a custom item route.";
+
+function itemTypeSlug(record: RecordLike) {
+  const item = asRecord(record.item);
+  const itemType = asRecord(item.itemType);
+  return stringField(itemType, "slug");
+}
+
+function entityTypeRouteSegment(type: string | undefined, record: RecordLike) {
   switch (type) {
     case "CHARACTER":
       return "characters";
@@ -140,10 +149,26 @@ function entityTypeRouteSegment(type: string | undefined) {
     case "ORGANIZATION":
       return "organizations";
     case "ITEM":
-      return "items";
+      return itemTypeSlug(record);
     default:
-      return `${(type ?? "entities").toLowerCase().replace(/_/g, "-")}s`;
+      return type ? `${type.toLowerCase().replace(/_/g, "-")}s` : undefined;
   }
+}
+
+function projectEntityIndexHref(project: string) {
+  return `/projects/${project}/entities`;
+}
+
+function entityAdminHref(params: {
+  project: string;
+  typeSegment: string | undefined;
+  encodedSlug: string | undefined;
+}) {
+  if (!params.typeSegment) return projectEntityIndexHref(params.project);
+  if (!params.encodedSlug) {
+    return `/projects/${params.project}/entities/${params.typeSegment}`;
+  }
+  return `/projects/${params.project}/entities/${params.typeSegment}/${params.encodedSlug}`;
 }
 
 function visibilityFor(record: RecordLike) {
@@ -189,7 +214,7 @@ function buildEntityAffordance<T>(params: {
   const record = asRecord(params.record);
   const type = stringField(record, "type");
   const displayType = entityDisplayType(type);
-  const typeSegment = entityTypeRouteSegment(type);
+  const typeSegment = entityTypeRouteSegment(type, record);
   const slug = stringField(record, "slug");
   const id = stringField(record, "id");
   const title = stringField(record, "name") ?? stringField(record, "title");
@@ -200,9 +225,7 @@ function buildEntityAffordance<T>(params: {
     ? pathSegment(previousSlug)
     : undefined;
   const visibility = visibilityFor(record);
-  const admin = encodedSlug
-    ? `/projects/${project}/entities/${typeSegment}/${encodedSlug}`
-    : `/projects/${project}/entities/${typeSegment}`;
+  const admin = entityAdminHref({ project, typeSegment, encodedSlug });
   const publicHref = encodedSlug
     ? `/worlds/${project}/entities/${encodedSlug}`
     : undefined;
@@ -212,22 +235,32 @@ function buildEntityAffordance<T>(params: {
       : undefined,
     admin,
     public: publicHref ? maybePublicLink(visibility, publicHref) : undefined,
-    list: `/projects/${project}/entities/${typeSegment}`,
+    list: typeSegment
+      ? `/projects/${project}/entities/${typeSegment}`
+      : projectEntityIndexHref(project),
   };
 
-  if (encodedPreviousSlug && encodedPreviousSlug !== encodedSlug) {
+  if (
+    typeSegment &&
+    encodedPreviousSlug &&
+    encodedPreviousSlug !== encodedSlug
+  ) {
     links.previousAdmin = `/projects/${project}/entities/${typeSegment}/${encodedPreviousSlug}`;
     const previousPublic = `/worlds/${project}/entities/${encodedPreviousSlug}`;
     links.previousPublic = maybePublicLink(visibility, previousPublic);
   }
 
-  const nextActions: WriteAffordanceNextAction[] = [
-    {
-      label: `Open ${displayType} in project admin`,
-      kind: "open",
-      href: admin,
-    },
-  ];
+  const primaryAction: WriteAffordanceNextAction = {
+    label: `Open ${displayType} in project admin`,
+    kind: "open",
+    href: admin,
+  };
+
+  if (type === "ITEM" && !typeSegment) {
+    primaryAction.note = missingItemTypeSlugRouteNote;
+  }
+
+  const nextActions: WriteAffordanceNextAction[] = [primaryAction];
 
   if (links.public) {
     nextActions.push({
@@ -244,7 +277,11 @@ function buildEntityAffordance<T>(params: {
     });
   }
 
-  if (encodedPreviousSlug && encodedPreviousSlug !== encodedSlug) {
+  if (
+    typeSegment &&
+    encodedPreviousSlug &&
+    encodedPreviousSlug !== encodedSlug
+  ) {
     nextActions.push({
       label: "Review updated entity slug",
       kind: "review",
@@ -370,14 +407,26 @@ function buildRelationshipAffordance<T>(params: {
     },
   ];
 
-  const sourceSlug = nestedStringField(record, "sourceEntity", "slug");
-  const targetSlug = nestedStringField(record, "targetEntity", "slug");
-  for (const entitySlug of [sourceSlug, targetSlug]) {
+  for (const entityField of ["sourceEntity", "targetEntity"]) {
+    const entityRecord = asRecord(record[entityField]);
+    const entitySlug = stringField(entityRecord, "slug");
     if (entitySlug) {
+      const encodedEntitySlug = pathSegment(entitySlug);
+      const relatedTypeSegment = entityTypeRouteSegment(
+        stringField(entityRecord, "type"),
+        entityRecord,
+      );
       nextActions.push({
         label: `Open related entity ${entitySlug}`,
         kind: "open",
-        href: `/worlds/${project}/entities/${pathSegment(entitySlug)}`,
+        href:
+          visibility.publicReadable === true
+            ? `/worlds/${project}/entities/${encodedEntitySlug}`
+            : entityAdminHref({
+                project,
+                typeSegment: relatedTypeSegment,
+                encodedSlug: relatedTypeSegment ? encodedEntitySlug : undefined,
+              }),
       });
     }
   }

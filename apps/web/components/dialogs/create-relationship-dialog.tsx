@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import {
+  normalizeWriteResult,
+  relationshipCreateFallbackAffordance,
+  type WriteAffordanceResponse,
+  type WriteSuccessAffordance,
+} from "@/lib/write-affordances";
 import type { Relationship } from "@loreum/types";
 import { Button } from "@loreum/ui/button";
 import {
@@ -34,7 +40,10 @@ interface CreateRelationshipDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectSlug: string;
-  onCreated: (relationship: Relationship) => void;
+  onCreated: (
+    relationship: Relationship,
+    affordance: WriteSuccessAffordance,
+  ) => void;
   initialSourceSlug?: string;
   initialTargetSlug?: string;
 }
@@ -73,23 +82,26 @@ export function CreateRelationshipDialog({
     setError(null);
 
     try {
-      const rel = await api<Relationship>(
-        `/projects/${projectSlug}/relationships`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            sourceEntitySlug: sourceSlug,
-            targetEntitySlug: targetSlug,
-            label: label.trim(),
-            description: description.trim() || undefined,
-          }),
-        },
+      const result = await api<
+        Relationship | WriteAffordanceResponse<Relationship>
+      >(`/projects/${projectSlug}/relationships`, {
+        method: "POST",
+        body: JSON.stringify({
+          sourceEntitySlug: sourceSlug,
+          targetEntitySlug: targetSlug,
+          label: label.trim(),
+          description: description.trim() || undefined,
+        }),
+      });
+      const { record: rel, affordance } = normalizeWriteResult(
+        result,
+        (record) => relationshipCreateFallbackAffordance(projectSlug, record),
       );
       setSourceSlug("");
       setTargetSlug("");
       setLabel("");
       setDescription("");
-      onCreated(rel);
+      onCreated(rel, affordance);
     } catch {
       setError("Failed to create relationship");
     } finally {

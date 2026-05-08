@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { Button } from "@loreum/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@loreum/ui/card";
 import { CreateEntityDialog } from "@/components/dialogs/create-entity-dialog";
+import { WriteSuccessCard } from "@/components/write-success-card";
+import type { WriteSuccessAffordance } from "@/lib/write-affordances";
 import { Plus, Users } from "lucide-react";
 import type { Entity } from "@loreum/types";
 
@@ -15,6 +17,9 @@ export default function CharactersPage() {
   const [characters, setCharacters] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [lastSuccess, setLastSuccess] = useState<WriteSuccessAffordance | null>(
+    null,
+  );
 
   useEffect(() => {
     api<Entity[]>(`/projects/${params.slug}/entities?type=CHARACTER`)
@@ -23,10 +28,14 @@ export default function CharactersPage() {
       .finally(() => setLoading(false));
   }, [params.slug]);
 
-  const handleCreated = (entity: Entity) => {
+  const handleCreated = (
+    entity: Entity,
+    affordance: WriteSuccessAffordance,
+  ) => {
     setCharacters((prev) =>
       [...prev, entity].sort((a, b) => a.name.localeCompare(b.name)),
     );
+    setLastSuccess(affordance);
     setDialogOpen(false);
   };
 
@@ -52,6 +61,11 @@ export default function CharactersPage() {
           New character
         </Button>
       </div>
+
+      <WriteSuccessCard
+        affordance={lastSuccess}
+        onDismiss={() => setLastSuccess(null)}
+      />
 
       {characters.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">

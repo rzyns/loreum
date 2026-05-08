@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import {
+  loreCreateFallbackAffordance,
+  normalizeWriteResult,
+  type WriteAffordanceResponse,
+  type WriteSuccessAffordance,
+} from "@/lib/write-affordances";
 import type { LoreArticleSummary as LoreArticle } from "@loreum/types";
 import { Button } from "@loreum/ui/button";
 import {
@@ -20,7 +26,7 @@ interface CreateLoreArticleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectSlug: string;
-  onCreated: (article: LoreArticle) => void;
+  onCreated: (article: LoreArticle, affordance: WriteSuccessAffordance) => void;
 }
 
 export function CreateLoreArticleDialog({
@@ -43,7 +49,9 @@ export function CreateLoreArticleDialog({
     setError(null);
 
     try {
-      const article = await api<LoreArticle>(`/projects/${projectSlug}/lore`, {
+      const result = await api<
+        LoreArticle | WriteAffordanceResponse<LoreArticle>
+      >(`/projects/${projectSlug}/lore`, {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -51,10 +59,14 @@ export function CreateLoreArticleDialog({
           category: category.trim() || undefined,
         }),
       });
+      const { record: article, affordance } = normalizeWriteResult(
+        result,
+        (record) => loreCreateFallbackAffordance(projectSlug, record),
+      );
       setTitle("");
       setContent("");
       setCategory("");
-      onCreated(article);
+      onCreated(article, affordance);
     } catch {
       setError("Failed to create article");
     } finally {

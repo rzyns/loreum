@@ -62,6 +62,20 @@ function parseJsonContent(result: unknown) {
   return JSON.parse(text);
 }
 
+function collectStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) return value.flatMap(collectStrings);
+  return Object.values(value).flatMap(collectStrings);
+}
+
+function assertNoWorldHrefs(value: unknown) {
+  assert.deepEqual(
+    collectStrings(value).filter((text) => text.includes("/worlds/")),
+    [],
+  );
+}
+
 test("registerTools registers all existing MCP tools and resources", () => {
   const { server, registeredTools, registeredResources } = createFakeServer();
   const { api } = createApi({});
@@ -245,7 +259,56 @@ test("create_entity returns post-write affordance envelope with typed entity adm
   });
 });
 
-test("update_entity returns new entity affordances and records previous route when slug changes", async () => {
+test("update_entity routes ITEM affordances through the returned item type slug", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = {
+    id: "ent_2",
+    type: "ITEM",
+    slug: "crystal-key",
+    name: "Crystal Key",
+    item: { itemType: { slug: "weapons", name: "Weapons" } },
+  };
+  const { api } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["update_entity"] });
+
+  const updateEntity = registeredTools.get("update_entity");
+  assert.ok(updateEntity, "update_entity handler should be registered");
+
+  const envelope = parseJsonContent(
+    await updateEntity({
+      projectSlug: "demo",
+      entitySlug: "old-key",
+      updates: { name: "Crystal Key" },
+    }),
+  );
+
+  assert.equal(envelope.operation, "update");
+  assert.equal(envelope.displayType, "Item");
+  assert.equal(envelope.slug, "crystal-key");
+  assert.equal(
+    envelope.links.admin,
+    "/projects/demo/entities/weapons/crystal-key",
+  );
+  assert.equal(
+    envelope.links.previousAdmin,
+    "/projects/demo/entities/weapons/old-key",
+  );
+  assert.equal(envelope.links.list, "/projects/demo/entities/weapons");
+  assert.equal(envelope.links.public, undefined);
+  assert.deepEqual(envelope.visibility, {
+    publicReadable: "unknown",
+    reason:
+      "Project visibility was not returned with the write response; verify public readability before sharing public links.",
+  });
+  assert.ok(
+    envelope.nextActions.some((action: { note?: string }) =>
+      action.note?.includes("slug changed"),
+    ),
+  );
+});
+
+test("update_entity falls back to the project entity index when an ITEM type slug is missing", async () => {
   const { server, registeredTools } = createFakeServer();
   const record = {
     id: "ent_2",
@@ -268,26 +331,14 @@ test("update_entity returns new entity affordances and records previous route wh
     }),
   );
 
-  assert.equal(envelope.operation, "update");
-  assert.equal(envelope.displayType, "Item");
-  assert.equal(envelope.slug, "crystal-key");
-  assert.equal(
-    envelope.links.admin,
-    "/projects/demo/entities/items/crystal-key",
-  );
-  assert.equal(
-    envelope.links.previousAdmin,
-    "/projects/demo/entities/items/old-key",
-  );
-  assert.equal(envelope.links.public, undefined);
-  assert.deepEqual(envelope.visibility, {
-    publicReadable: "unknown",
-    reason:
-      "Project visibility was not returned with the write response; verify public readability before sharing public links.",
-  });
+  assert.equal(envelope.links.admin, "/projects/demo/entities");
+  assert.equal(envelope.links.previousAdmin, undefined);
+  assert.equal(envelope.links.list, "/projects/demo/entities");
   assert.ok(
-    envelope.nextActions.some((action: { note?: string }) =>
-      action.note?.includes("slug changed"),
+    envelope.nextActions.some(
+      (action: { note?: string }) =>
+        action.note ===
+        "The ITEM record did not include item.itemType.slug, so this envelope falls back to the project entity index instead of guessing a custom item route.",
     ),
   );
 });
@@ -326,6 +377,8 @@ test("create_relationship returns list-only affordances without implying a detai
   assert.equal(envelope.links.admin, "/projects/demo/relationships");
   assert.equal(envelope.links.public, undefined);
   assert.equal(envelope.links.detail, undefined);
+  assertNoWorldHrefs(envelope.links);
+  assertNoWorldHrefs(envelope.nextActions);
   assert.equal(envelope.visibility.publicReadable, false);
   assert.equal(
     envelope.visibility.reason,
@@ -338,6 +391,40 @@ test("create_relationship returns list-only affordances without implying a detai
         "Relationships currently expose list pages only; no detail route is advertised.",
     ),
   );
+});
+
+test("create_relationship with unknown visibility does not advertise public world hrefs", async () => {
+  const { server, registeredTools } = createFakeServer();
+  const record = {
+    id: "rel_2",
+    type: "rival",
+    label: "Rival",
+    sourceEntity: { slug: "ari", name: "Ari" },
+    targetEntity: { slug: "bri", name: "Bri" },
+  };
+  const { api } = createApi(record);
+
+  registerTools(server, api, { writeTools: ["create_relationship"] });
+
+  const createRelationship = registeredTools.get("create_relationship");
+  assert.ok(
+    createRelationship,
+    "create_relationship handler should be registered",
+  );
+
+  const envelope = parseJsonContent(
+    await createRelationship({
+      projectSlug: "demo",
+      sourceEntitySlug: "ari",
+      targetEntitySlug: "bri",
+      type: "rival",
+    }),
+  );
+
+  assert.equal(envelope.visibility.publicReadable, "unknown");
+  assert.equal(envelope.links.public, undefined);
+  assertNoWorldHrefs(envelope.links);
+  assertNoWorldHrefs(envelope.nextActions);
 });
 
 test("create_lore_article returns lore affordance envelope with public visibility unknown when not proven", async () => {

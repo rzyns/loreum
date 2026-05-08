@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { Button } from "@loreum/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@loreum/ui/card";
 import { CreateEntityDialog } from "@/components/dialogs/create-entity-dialog";
+import { WriteSuccessCard } from "@/components/write-success-card";
+import type { WriteSuccessAffordance } from "@/lib/write-affordances";
 import { Plus, Box } from "lucide-react";
 import type { Entity } from "@loreum/types";
 
@@ -23,6 +25,9 @@ export default function CustomTypePage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [lastSuccess, setLastSuccess] = useState<WriteSuccessAffordance | null>(
+    null,
+  );
 
   useEffect(() => {
     // Fetch the item type to get its name, then fetch all ITEM entities and filter
@@ -45,10 +50,14 @@ export default function CustomTypePage() {
       .finally(() => setLoading(false));
   }, [params.slug, params.typeSlug, router]);
 
-  const handleCreated = (entity: Entity) => {
+  const handleCreated = (
+    entity: Entity,
+    affordance: WriteSuccessAffordance,
+  ) => {
     setEntities((prev) =>
       [...prev, entity].sort((a, b) => a.name.localeCompare(b.name)),
     );
+    setLastSuccess(affordance);
     setDialogOpen(false);
   };
 
@@ -82,6 +91,11 @@ export default function CustomTypePage() {
           New {itemType.name.toLowerCase().replace(/s$/, "")}
         </Button>
       </div>
+
+      <WriteSuccessCard
+        affordance={lastSuccess}
+        onDismiss={() => setLastSuccess(null)}
+      />
 
       {entities.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
@@ -122,6 +136,7 @@ export default function CustomTypePage() {
         onOpenChange={setDialogOpen}
         projectSlug={params.slug}
         defaultType="ITEM"
+        defaultTypeSlug={params.typeSlug}
         onCreated={handleCreated}
       />
     </div>

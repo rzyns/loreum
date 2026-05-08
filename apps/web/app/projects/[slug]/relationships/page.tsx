@@ -7,6 +7,8 @@ import type { Relationship } from "@loreum/types";
 import { Button } from "@loreum/ui/button";
 import { Card, CardHeader, CardDescription } from "@loreum/ui/card";
 import { CreateRelationshipDialog } from "@/components/dialogs/create-relationship-dialog";
+import { WriteSuccessCard } from "@/components/write-success-card";
+import type { WriteSuccessAffordance } from "@/lib/write-affordances";
 import { EditRelationshipSheet } from "@/components/edit-relationship-sheet";
 import { RelationshipGraph } from "@/components/relationship-graph";
 import {
@@ -23,6 +25,9 @@ export default function RelationshipsPage() {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [lastSuccess, setLastSuccess] = useState<WriteSuccessAffordance | null>(
+    null,
+  );
   const [editingRel, setEditingRel] = useState<Relationship | null>(null);
   const [view, setView] = useState<"graph" | "list">("graph");
   const [connectSource, setConnectSource] = useState<string | undefined>();
@@ -35,8 +40,12 @@ export default function RelationshipsPage() {
       .finally(() => setLoading(false));
   }, [params.slug]);
 
-  const handleCreated = (rel: Relationship) => {
+  const handleCreated = (
+    rel: Relationship,
+    affordance: WriteSuccessAffordance,
+  ) => {
     setRelationships((prev) => [rel, ...prev]);
+    setLastSuccess(affordance);
     setDialogOpen(false);
   };
 
@@ -94,6 +103,11 @@ export default function RelationshipsPage() {
           </Button>
         </div>
       </div>
+
+      <WriteSuccessCard
+        affordance={lastSuccess}
+        onDismiss={() => setLastSuccess(null)}
+      />
 
       {relationships.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">

@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import {
+  entityCreateFallbackAffordance,
+  normalizeWriteResult,
+  type WriteAffordanceResponse,
+  type WriteSuccessAffordance,
+} from "@/lib/write-affordances";
 import type { Entity, CreateEntityRequest } from "@loreum/types";
 import { Button } from "@loreum/ui/button";
 import {
@@ -62,7 +68,8 @@ interface CreateEntityDialogProps {
   onOpenChange: (open: boolean) => void;
   projectSlug: string;
   defaultType?: EntityType;
-  onCreated: (entity: Entity) => void;
+  defaultTypeSlug?: string;
+  onCreated: (entity: Entity, affordance: WriteSuccessAffordance) => void;
 }
 
 export function CreateEntityDialog({
@@ -70,6 +77,7 @@ export function CreateEntityDialog({
   onOpenChange,
   projectSlug,
   defaultType,
+  defaultTypeSlug,
   onCreated,
 }: CreateEntityDialogProps) {
   const [name, setName] = useState("");
@@ -142,12 +150,20 @@ export function CreateEntityDialog({
     }
 
     try {
-      const entity = await api<Entity>(`/projects/${projectSlug}/entities`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const result = await api<Entity | WriteAffordanceResponse<Entity>>(
+        `/projects/${projectSlug}/entities`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+      const { record: entity, affordance } = normalizeWriteResult(
+        result,
+        (record) =>
+          entityCreateFallbackAffordance(projectSlug, record, defaultTypeSlug),
+      );
       resetFields();
-      onCreated(entity);
+      onCreated(entity, affordance);
     } catch {
       setError("Failed to create entity");
     } finally {
