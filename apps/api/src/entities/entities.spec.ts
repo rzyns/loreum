@@ -3,6 +3,7 @@ import request from "supertest";
 import { INestApplication } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
+import { ApiKeysService } from "../api-keys/api-keys.service";
 import {
   createTestApp,
   createAuthenticatedUser,
@@ -15,6 +16,7 @@ describe("Entities (integration)", () => {
   let module: TestingModule;
   let authCookie: string;
   let csrfToken: string;
+  let ownerId: string;
   let projectSlug: string;
 
   beforeAll(async () => {
@@ -31,6 +33,7 @@ describe("Entities (integration)", () => {
     const auth = await createAuthenticatedUser(prisma, module);
     authCookie = auth.cookie;
     csrfToken = auth.csrfToken;
+    ownerId = auth.user.id;
 
     // Create a project for entity tests
     const res = await request(app.getHttpServer())
@@ -42,6 +45,139 @@ describe("Entities (integration)", () => {
   });
 
   const base = () => `/v1/projects/${projectSlug}/entities`;
+  const draftBase = () => `/v1/projects/${projectSlug}/drafts/entities`;
+
+  async function createApiKey(
+    permissions: "DRAFT_WRITE" | "DRAFT_WRITE_SELF_APPROVE" | "CANONICAL_WRITE",
+  ) {
+    const project = await prisma.project.findUniqueOrThrow({
+      where: { slug: projectSlug },
+      select: { id: true },
+    });
+    const apiKeysService = module.get(ApiKeysService);
+    return apiKeysService.create(project.id, ownerId, {
+      name: `${permissions} test key`,
+      permissions,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // DRAFT-FIRST CREATE
+  // -------------------------------------------------------------------------
+
+  describe("POST /drafts/entities", () => {
+    it("submits an entity draft without changing canonical entity count", async () => {
+      const beforeCount = await prisma.entity.count();
+
+      const res = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Radagast",
+          summary: "A staged wizard",
+          character: { species: "Maia", role: "Wizard" },
+        })
+        .expect(201);
+
+      expect(res.body).toMatchObject({
+        status: "submitted",
+        canonicalApplied: false,
+        proposedSlug: "radagast",
+        displayName: "Radagast",
+      });
+      expect(res.body.draftId).toEqual(expect.any(String));
+      expect(res.body.batchId).toEqual(expect.any(String));
+      expect(await prisma.entity.count()).toBe(beforeCount);
+    });
+
+    it("prevents DRAFT_WRITE API keys from approving submitted drafts", async () => {
+      const key = await createApiKey("DRAFT_WRITE");
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({ type: "CHARACTER", name: "Unapproved Agent Draft" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({ reviewNote: "trying to self-approve" })
+        .expect(403);
+
+      expect(await prisma.entity.count()).toBe(0);
+    });
+
+    it("lets an authorized owner approve, apply, and audit an entity draft", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "Staged Valley" })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "approved for canon" })
+        .expect(200);
+
+      expect(res.body).toMatchObject({
+        status: "applied",
+        canonicalApplied: true,
+        draftId: submit.body.draftId,
+        canonical: {
+          type: "LOCATION",
+          name: "Staged Valley",
+          slug: "staged-valley",
+        },
+      });
+      expect(await prisma.entity.count()).toBe(1);
+      const auditEvents = await prisma.auditEvent.findMany({
+        where: { draftId: submit.body.draftId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(auditEvents.map((event) => event.eventType)).toEqual([
+        "DRAFT_ENTITY_SUBMITTED",
+        "DRAFT_ENTITY_APPLIED",
+      ]);
+    });
+
+    it("lets an authorized owner reject an entity draft without applying it canonically", async () => {
+      const beforeCount = await prisma.entity.count();
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Rejected Staged Character" })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "needs more lore" })
+        .expect(200);
+
+      expect(res.body).toMatchObject({
+        status: "rejected",
+        canonicalApplied: false,
+        draftId: submit.body.draftId,
+        rejectionReason: "needs more lore",
+      });
+      expect(await prisma.entity.count()).toBe(beforeCount);
+      const auditEvents = await prisma.auditEvent.findMany({
+        where: { draftId: submit.body.draftId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(auditEvents.map((event) => event.eventType)).toEqual([
+        "DRAFT_ENTITY_SUBMITTED",
+        "DRAFT_ENTITY_REJECTED",
+      ]);
+    });
+  });
 
   // -------------------------------------------------------------------------
   // CREATE

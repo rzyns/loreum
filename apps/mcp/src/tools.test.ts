@@ -187,16 +187,21 @@ test("registerTools ignores unknown write-tool allowlist entries", () => {
   assert.equal(registeredTools.has("create_lore_article"), false);
 });
 
-test("create_entity returns post-write affordance envelope with typed entity admin and public route hints", async () => {
+test("create_entity submits a draft and returns staged/not-canonical wording", async () => {
   const { server, registeredTools } = createFakeServer();
-  const record = {
-    id: "ent_1",
-    type: "CHARACTER",
-    slug: "ari",
-    name: "Ari",
-    project: { visibility: "PUBLIC" },
+  const draft = {
+    draftId: "draft_1",
+    batchId: "batch_1",
+    status: "submitted",
+    canonicalApplied: false,
+    proposedSlug: "ari",
+    displayName: "Ari",
+    proposedData: {
+      type: "CHARACTER",
+      name: "Ari",
+    },
   };
-  const { api, apiCalls } = createApi(record);
+  const { api, apiCalls } = createApi(draft);
 
   registerTools(server, api, { writeTools: ["create_entity"] });
 
@@ -212,7 +217,7 @@ test("create_entity returns post-write affordance envelope with typed entity adm
 
   assert.deepEqual(apiCalls, [
     {
-      path: "/projects/test world/entities",
+      path: "/projects/test world/drafts/entities",
       options: {
         method: "POST",
         body: JSON.stringify({ type: "CHARACTER", name: "Ari" }),
@@ -221,42 +226,27 @@ test("create_entity returns post-write affordance envelope with typed entity adm
   ]);
   assert.deepEqual(envelope, {
     ok: true,
-    operation: "create",
+    operation: "submit_draft",
     contentType: "entity",
     displayType: "Character",
     projectSlug: "test world",
-    id: "ent_1",
-    slug: "ari",
+    draftId: "draft_1",
+    batchId: "batch_1",
+    status: "submitted",
+    canonicalApplied: false,
+    proposedSlug: "ari",
     title: "Ari",
-    record,
+    record: draft,
     links: {
-      api: "/projects/test%20world/entities/ari",
-      admin: "/projects/test%20world/entities/characters/ari",
-      public: "/worlds/test%20world/entities/ari",
-      list: "/projects/test%20world/entities/characters",
-    },
-    visibility: {
-      projectVisibility: "PUBLIC",
-      publicReadable: true,
-      reason:
-        "Project visibility is PUBLIC, so the public world route is expected to be readable.",
+      reviewQueue: "/projects/test%20world/drafts",
+      draftApi: "/projects/test%20world/drafts/entities/draft_1",
     },
     nextActions: [
       {
-        label: "Open Character in project admin",
-        kind: "open",
-        href: "/projects/test%20world/entities/characters/ari",
-      },
-      {
-        label: "Verify public Character page",
-        kind: "verify",
-        href: "/worlds/test%20world/entities/ari",
-        note: "Public route is expected to work because project visibility is PUBLIC.",
-      },
-      {
-        label: "Link related lore or relationships",
-        kind: "link",
-        tool: "create_relationship",
+        label: "Review staged Character draft before canonical application",
+        kind: "review",
+        href: "/projects/test%20world/drafts",
+        note: "This create_entity call submitted a draft only; it did not create or mutate a canonical entity.",
       },
     ],
   });

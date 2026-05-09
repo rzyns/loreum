@@ -48,7 +48,7 @@ function pathSegment(value: string) {
   return encodeURIComponent(value);
 }
 
-type WriteOperation = "create" | "update";
+type WriteOperation = "create" | "update" | "submit_draft";
 type ContentType = "entity" | "lore_article" | "relationship";
 type PublicReadable = boolean | "unknown";
 
@@ -59,6 +59,8 @@ type WriteAffordanceLinkSet = {
   list?: string;
   previousAdmin?: string;
   previousPublic?: string;
+  reviewQueue?: string;
+  draftApi?: string;
 };
 
 type WriteAffordanceNextAction = {
@@ -78,9 +80,14 @@ type WriteAffordanceResponse<T> = {
   id?: string;
   slug?: string;
   title?: string;
+  draftId?: string;
+  batchId?: string;
+  status?: string;
+  canonicalApplied?: boolean;
+  proposedSlug?: string;
   record: T;
   links: WriteAffordanceLinkSet;
-  visibility: {
+  visibility?: {
     projectVisibility?: string;
     publicReadable: PublicReadable;
     reason: string;
@@ -309,6 +316,57 @@ function buildEntityAffordance<T>(params: {
     links,
     visibility,
     nextActions,
+  };
+}
+
+function buildDraftEntityAffordance<T>(params: {
+  projectSlug: string;
+  record: T;
+}): WriteAffordanceResponse<T> {
+  const record = asRecord(params.record);
+  const proposedData = asRecord(record.proposedData);
+  const type = stringField(proposedData, "type");
+  const displayType = entityDisplayType(type);
+  const title =
+    stringField(record, "displayName") ??
+    stringField(proposedData, "name") ??
+    stringField(record, "title");
+  const project = pathSegment(params.projectSlug);
+  const draftId = stringField(record, "draftId");
+  const batchId = stringField(record, "batchId");
+  const status = stringField(record, "status");
+  const canonicalApplied = record.canonicalApplied === true;
+  const proposedSlug = stringField(record, "proposedSlug");
+  const reviewQueue = `/projects/${project}/drafts`;
+  const draftApi = draftId
+    ? `/projects/${project}/drafts/entities/${pathSegment(draftId)}`
+    : undefined;
+
+  return {
+    ok: true,
+    operation: "submit_draft",
+    contentType: "entity",
+    displayType,
+    projectSlug: params.projectSlug,
+    draftId,
+    batchId,
+    status,
+    canonicalApplied,
+    proposedSlug,
+    title,
+    record: params.record,
+    links: {
+      reviewQueue,
+      draftApi,
+    },
+    nextActions: [
+      {
+        label: `Review staged ${displayType} draft before canonical application`,
+        kind: "review",
+        href: reviewQueue,
+        note: "This create_entity call submitted a draft only; it did not create or mutate a canonical entity.",
+      },
+    ],
   };
 }
 
@@ -785,7 +843,7 @@ export function registerTools(
       "create_entity",
       {
         description:
-          "Create a new entity in a project and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
+          "Submit a staged entity draft for project review; this does not create or mutate a canonical entity until an authorized reviewer approves and applies it",
         inputSchema: {
           projectSlug: z.string(),
           type: z.enum(["CHARACTER", "LOCATION", "ORGANIZATION", "ITEM"]),
@@ -799,15 +857,15 @@ export function registerTools(
         },
       },
       async ({ projectSlug, ...data }) => {
-        const entity = await api(`/projects/${projectSlug}/entities`, {
+        const draft = await api(`/projects/${projectSlug}/drafts/entities`, {
           method: "POST",
           body: JSON.stringify(data),
         });
+        const stagedDraft = { ...asRecord(draft), proposedData: data };
         return jsonContent(
-          buildEntityAffordance({
-            operation: "create",
+          buildDraftEntityAffordance({
             projectSlug,
-            record: entity,
+            record: stagedDraft,
           }),
         );
       },

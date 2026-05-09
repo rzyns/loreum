@@ -1,12 +1,16 @@
-import { Module } from '@nestjs/common';
-import { ProjectsModule } from '../projects/projects.module';
-import { EntitiesController } from './entities.controller';
-import { EntitiesService } from './entities.service';
+import { Module } from "@nestjs/common";
+import { AuditModule } from "../audit/audit.module";
+import { AuthModule } from "../auth/auth.module";
+import { ProjectsModule } from "../projects/projects.module";
+import { EntitiesController } from "./entities.controller";
+import { EntityDraftsController } from "./entity-drafts.controller";
+import { EntityDraftsService } from "./entity-drafts.service";
+import { EntitiesService } from "./entities.service";
 
 @Module({
-  imports: [ProjectsModule],
-  controllers: [EntitiesController],
-  providers: [EntitiesService],
-  exports: [EntitiesService],
+  imports: [ProjectsModule, AuthModule, AuditModule],
+  controllers: [EntitiesController, EntityDraftsController],
+  providers: [EntitiesService, EntityDraftsService],
+  exports: [EntitiesService, EntityDraftsService],
 })
 export class EntitiesModule {}
