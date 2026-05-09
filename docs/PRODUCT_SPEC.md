@@ -285,15 +285,18 @@ All AI features that consume tokens are **Pro only**. The MCP server remains fre
 
 Users generate project-scoped API keys from project settings in the web UI. Each key has a name, configurable permission level, and expiration date.
 
-| Feature                                     | Status  | Tier |
-| ------------------------------------------- | ------- | ---- |
-| API key generation UI (project settings)    | Planned | Free |
-| Key permissions: read-only / read-write     | Planned | Free |
-| Key expiration + revocation                 | Planned | Free |
-| Last-used tracking                          | Planned | Free |
-| Multiple keys per project                   | Planned | Free |
+Current implementation note: API keys currently use a binary `READ_ONLY` / `READ_WRITE` enum. Phase-2 agentic CMS work should split “can submit reviewable drafts” from “can directly mutate canonical data”; see section 16 and the Agentic CMS draft/audit design docs.
+
+| Feature                                  | Status  | Tier |
+| ---------------------------------------- | ------- | ---- |
+| API key generation UI (project settings) | Planned | Free |
+| Key permissions: read-only / read-write  | Planned | Free |
+| Key expiration + revocation              | Planned | Free |
+| Last-used tracking                       | Planned | Free |
+| Multiple keys per project                | Planned | Free |
 
 **Flow:**
+
 1. User opens project settings, generates an API key with a label (e.g. "Claude Desktop")
 2. Key is displayed once, user copies it
 3. User configures their MCP client (Claude Desktop, Cursor, etc.) with the key as `MCP_API_TOKEN`
@@ -301,16 +304,17 @@ Users generate project-scoped API keys from project settings in the web UI. Each
 5. All requests are scoped to the project the key belongs to
 
 **Database model: `ApiKey`**
+
 - `id`, `projectId`, `userId` (who created it)
 - `name` (user label: "Claude Desktop", "Cursor", etc.)
 - `keyHash` (bcrypt hash, the plaintext is shown once on creation)
-- `permissions` (enum: `READ_ONLY`, `READ_WRITE`)
+- `permissions` (current enum: `READ_ONLY`, `READ_WRITE`; Phase-2 target modes: `READ_ONLY`, `DRAFT_WRITE`, `DRAFT_WRITE_SELF_APPROVE`, exceptional `CANONICAL_WRITE`)
 - `lastUsedAt`, `expiresAt`, `revokedAt`
 - `createdAt`
 
 #### MCP Tool Surface
 
-The MCP server exposes tools for AI clients to read and write world data. All write operations go through the review queue (see section 16).
+The MCP server exposes tools for AI clients to read and write world data. The target behavior for write-like operations is to go through the review queue before touching canonical world data (see section 16).
 
 **Read Tools**
 
@@ -320,7 +324,7 @@ The MCP server exposes tools for AI clients to read and write world data. All wr
 | `get_entity`         | Single entity with optional relationships/lore/scenes    | Built   |
 | `get_entity_hub`     | Full aggregated lore page for an entity                  | Built   |
 | `list_entities`      | List and filter entities by type, tag, or search query   | Built   |
-| `get_storyboard`     | Narrative structure: plotlines, works, chapters, scenes   | Built   |
+| `get_storyboard`     | Narrative structure: plotlines, works, chapters, scenes  | Built   |
 | `get_entity_types`   | Entity types and their field schemas                     | Built   |
 | `get_style_guide`    | Base style guide + scene overrides + character voices    | Planned |
 | `get_timeline`       | Timeline events and eras for a project                   | Planned |
@@ -330,32 +334,34 @@ The MCP server exposes tools for AI clients to read and write world data. All wr
 
 **Write Tools**
 
-All write tools produce `PendingChange` records in the review queue rather than modifying data directly. The user reviews and accepts changes from the web UI.
+Target behavior: write-like MCP tools should submit reviewable draft/proposal records instead of directly modifying canonical data. The user reviews and applies accepted changes from the web UI or another authorized review surface.
 
-| Tool                    | Description                                           | Status  |
-| ----------------------- | ----------------------------------------------------- | ------- |
-| `create_entity`         | Create a new entity (character, location, org, item)  | Built   |
-| `update_entity`         | Partial update to an existing entity                  | Built   |
-| `create_relationship`   | Create a relationship between two entities            | Built   |
-| `create_lore_article`   | Create a lore article linked to entities              | Built   |
-| `update_lore_article`   | Update an existing lore article                       | Planned |
-| `delete_entity`         | Delete an entity                                      | Planned |
-| `delete_relationship`   | Delete a relationship                                 | Planned |
-| `delete_lore_article`   | Delete a lore article                                 | Planned |
-| `create_timeline_event` | Create a timeline event linked to entities            | Planned |
-| `update_timeline_event` | Update an existing timeline event                     | Planned |
-| `delete_timeline_event` | Delete a timeline event                               | Planned |
-| `create_scene`          | Create a scene within a chapter                       | Planned |
-| `update_scene`          | Update scene content, style notes, characters         | Planned |
-| `create_plot_point`     | Create a plot point on a plotline                     | Planned |
-| `update_plot_point`     | Update a plot point                                   | Planned |
-| `set_style_guide`       | Create or update the project style guide              | Planned |
+Current implementation note: several write tools exist today, but they still call canonical write endpoints when write mode is enabled. The Phase-2 draft/audit design changes that behavior for the first slice by routing `create_entity` through a draft-submit path before any remote write-mode deployment decision.
+
+| Tool                    | Description                                          | Status  |
+| ----------------------- | ---------------------------------------------------- | ------- |
+| `create_entity`         | Create a new entity (character, location, org, item) | Built   |
+| `update_entity`         | Partial update to an existing entity                 | Built   |
+| `create_relationship`   | Create a relationship between two entities           | Built   |
+| `create_lore_article`   | Create a lore article linked to entities             | Built   |
+| `update_lore_article`   | Update an existing lore article                      | Planned |
+| `delete_entity`         | Delete an entity                                     | Planned |
+| `delete_relationship`   | Delete a relationship                                | Planned |
+| `delete_lore_article`   | Delete a lore article                                | Planned |
+| `create_timeline_event` | Create a timeline event linked to entities           | Planned |
+| `update_timeline_event` | Update an existing timeline event                    | Planned |
+| `delete_timeline_event` | Delete a timeline event                              | Planned |
+| `create_scene`          | Create a scene within a chapter                      | Planned |
+| `update_scene`          | Update scene content, style notes, characters        | Planned |
+| `create_plot_point`     | Create a plot point on a plotline                    | Planned |
+| `update_plot_point`     | Update a plot point                                  | Planned |
+| `set_style_guide`       | Create or update the project style guide             | Planned |
 
 **Resources**
 
-| Resource            | URI pattern                               | Status |
-| ------------------- | ----------------------------------------- | ------ |
-| `project_overview`  | `loreum://project/{slug}/overview`        | Built  |
+| Resource           | URI pattern                        | Status |
+| ------------------ | ---------------------------------- | ------ |
+| `project_overview` | `loreum://project/{slug}/overview` | Built  |
 
 #### Style-Aware Generation
 
@@ -435,26 +441,32 @@ Real-time collaboration via Yjs (CRDT):
 
 ### 16. MCP Review Queue (Staging Area)
 
-| Feature                                        | Status  | Tier |
-| ---------------------------------------------- | ------- | ---- |
-| PendingChange model + API                      | Planned | Free |
-| Review queue page (list of pending changes)    | Planned | Free |
-| Diff view for updates (before/after)           | Planned | Free |
-| Preview for creates (full proposed record)     | Planned | Free |
-| Deletion confirmation with record summary      | Planned | Free |
-| Per-change actions: accept / edit / reject     | Planned | Free |
-| Batch accept / batch reject                    | Planned | Free |
-| Sidebar badge (pending change count)           | Planned | Free |
-| Change grouping by session (batch context)     | Planned | Free |
-| Collaborator suggestion mode (same mechanism)  | Planned | Pro  |
+Phase-2 draft/audit lifecycle details are expanded in [`AGENTIC_CMS_DRAFT_LIFECYCLE_SPEC.md`](./AGENTIC_CMS_DRAFT_LIFECYCLE_SPEC.md), with implementation guidance in [`AGENTIC_CMS_TECHNICAL_DESIGN.md`](./AGENTIC_CMS_TECHNICAL_DESIGN.md). Those documents supersede the older `PendingChange`-only sketch below for new work: the Phase-2 target substrate is a richer `DraftProposal`/`AuditEvent` model with explicit draft states, approval/application semantics, actor/source vocabulary, project-scoped capabilities, and a narrow first implementation slice.
+
+| Feature                                       | Status                 | Tier |
+| --------------------------------------------- | ---------------------- | ---- |
+| Legacy `PendingChange` model                  | Exists / legacy sketch | Free |
+| `DraftProposal` + `AuditEvent` model          | Planned                | Free |
+| Review queue page (list of pending changes)   | Planned                | Free |
+| Diff view for updates (before/after)          | Planned                | Free |
+| Preview for creates (full proposed record)    | Planned                | Free |
+| Deletion confirmation with record summary     | Planned                | Free |
+| Per-change actions: accept / edit / reject    | Planned                | Free |
+| Batch accept / batch reject                   | Planned                | Free |
+| Sidebar badge (pending change count)          | Planned                | Free |
+| Change grouping by session (batch context)    | Planned                | Free |
+| Collaborator suggestion mode (same mechanism) | Planned                | Pro  |
 
 #### How It Works
 
-Every MCP write operation (create, update, delete) produces a `PendingChange` record instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state.
+Target behavior: every MCP write operation (create, update, delete) produces a reviewable draft/proposal record instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state.
+
+Current implementation note: the existing schema includes an early `PendingChange` model, but it is under-specified for Phase-2 actor/source, approval/application, capability, and audit requirements. New implementation work should follow the `DraftProposal` + append-only `AuditEvent` design rather than expanding `PendingChange` unless a deliberate migration/rename is chosen.
 
 **Write flow:**
+
 1. AI calls a write tool (e.g. `create_entity`, `update_entity`, `delete_entity`)
-2. The API validates the payload, then creates a `PendingChange` record instead of applying it
+2. The API validates the payload, then creates a draft/proposal record instead of applying it
 3. The MCP tool returns a confirmation that the change was staged (not applied)
 4. The user sees a badge on the "Review" nav item showing the pending count
 5. The user opens the review queue and inspects each change
@@ -462,7 +474,7 @@ Every MCP write operation (create, update, delete) produces a `PendingChange` re
 7. On **reject**: the pending change is discarded
 8. On **edit**: the user modifies the proposed data in a form, then accepts the edited version
 
-**Database model: `PendingChange`**
+**Legacy database sketch: `PendingChange`**
 
 ```
 PendingChange
@@ -482,6 +494,8 @@ PendingChange
 
 The `batchId` groups changes from a single AI session. If the AI creates a character, adds two relationships, and writes a lore article in one conversation, those four changes share a `batchId` so the user can review them as a coherent set.
 
+Phase-2 refinement: use the richer `DraftProposal` lifecycle states (`SUBMITTED`, `CHANGES_REQUESTED`, `APPROVED`, `APPLIED`, `REJECTED`, etc.) plus append-only `AuditEvent` rows for new work. Keep `PendingChange` as legacy/current-schema context until it is deliberately migrated or retired.
+
 The `previousData` field stores a snapshot of the record at the time the change was proposed. For updates, this enables a side-by-side diff. For deletes, it shows what will be removed.
 
 #### Review Queue UX
@@ -489,6 +503,7 @@ The `previousData` field stores a snapshot of the record at the time the change 
 The review queue is a dedicated page accessible from the project sidebar. It functions like a pull request diff view.
 
 **List view:**
+
 - Changes grouped by batch, with a timestamp and source label (API key name)
 - Each change shows: operation badge (green CREATE, yellow UPDATE, red DELETE), target type, target name
 - Batch header with "Accept All" / "Reject All" buttons
@@ -501,13 +516,14 @@ The review queue is a dedicated page accessible from the project sidebar. It fun
 - **DELETE**: Summary card of the record that would be removed, with a list of what else references it (relationships, scenes, plot points). Accept deletes the record.
 
 **Batch view:**
+
 - Expanding a batch shows all changes in sequence with a summary: "Claude Desktop created 2 entities, updated 1, added 3 relationships"
 - "Accept All" applies every pending change in the batch in dependency order (creates before relationship links, etc.)
 - Users who trust their AI workflow can batch-accept regularly; users who want control review each change
 
 #### Collaborator Suggestions (Pro)
 
-The same `PendingChange` mechanism powers collaborator suggestion mode. When a team member with "suggest" permissions edits an entity, their changes produce pending records that the project owner reviews. The review queue shows MCP changes and collaborator suggestions in the same interface, distinguished by source.
+The same draft/proposal mechanism should power collaborator suggestion mode. When a team member with "suggest" permissions edits an entity, their changes produce pending proposal records that the project owner reviews. The review queue shows MCP changes and collaborator suggestions in the same interface, distinguished by source.
 
 ### 17. Admin & Observability
 
