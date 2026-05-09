@@ -889,6 +889,9 @@ export function registerTools(
           title: z.string(),
           content: z.string(),
           category: z.string().optional(),
+          canonStatus: z
+            .enum(["draft", "staging", "provisional", "canon"])
+            .optional(),
           tags: z.array(z.string()).optional(),
           entitySlugs: z.array(z.string()).optional(),
         },

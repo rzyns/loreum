@@ -1,5 +1,15 @@
 import type { EntityType } from "../entity-types";
 
+export const LORE_ARTICLE_CANON_STATUSES = [
+  "draft",
+  "staging",
+  "provisional",
+  "canon",
+] as const;
+
+export type LoreArticleCanonStatus =
+  (typeof LORE_ARTICLE_CANON_STATUSES)[number];
+
 export interface LoreArticle {
   id: string;
   projectId: string;
@@ -7,6 +17,7 @@ export interface LoreArticle {
   slug: string;
   content: string;
   category: string | null;
+  canonStatus: LoreArticleCanonStatus;
   createdAt: string;
   updatedAt: string;
   // Populated when included
@@ -20,6 +31,7 @@ export interface LoreArticleSummary {
   title: string;
   slug: string;
   category: string | null;
+  canonStatus: LoreArticleCanonStatus;
   createdAt: string;
 }
 

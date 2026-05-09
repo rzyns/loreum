@@ -42,7 +42,7 @@ describe("Lore (integration)", () => {
 
   const base = () => `/v1/projects/${projectSlug}/lore`;
 
-  it("creates a lore article", async () => {
+  it("creates a lore article with a conservative provisional canon status by default", async () => {
     const res = await request(app.getHttpServer())
       .post(base())
       .set("Cookie", authCookie)
@@ -58,7 +58,49 @@ describe("Lore (integration)", () => {
       title: "The One Ring",
       slug: "the-one-ring",
       category: "artifacts",
+      canonStatus: "provisional",
     });
+  });
+
+  it("creates and updates a lore article with an explicit canon status", async () => {
+    const created = await request(app.getHttpServer())
+      .post(base())
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({
+        title: "Founding Myth",
+        content: "In the beginning...",
+        canonStatus: "draft",
+      })
+      .expect(201);
+
+    expect(created.body).toMatchObject({
+      title: "Founding Myth",
+      slug: "founding-myth",
+      canonStatus: "draft",
+    });
+
+    const updated = await request(app.getHttpServer())
+      .patch(`${base()}/founding-myth`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ canonStatus: "canon" })
+      .expect(200);
+
+    expect(updated.body.canonStatus).toBe("canon");
+  });
+
+  it("rejects unknown lore article canon statuses", async () => {
+    await request(app.getHttpServer())
+      .post(base())
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({
+        title: "Rumor Ledger",
+        content: "Contradictory notes.",
+        canonStatus: "rumored",
+      })
+      .expect(400);
   });
 
   it("lists lore articles", async () => {

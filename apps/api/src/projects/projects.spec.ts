@@ -226,6 +226,65 @@ describe("Projects (integration)", () => {
       });
     });
 
+    it("makes newly posted lore immediately readable by slug and searchable through DB-backed project search", async () => {
+      await createProject();
+
+      const createRes = await request(app.getHttpServer())
+        .post("/v1/projects/searchable-project/lore")
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          title: "Read Your Write Lore",
+          content:
+            "Freshly written zircon beacon lore is searchable immediately.",
+          category: "consistency",
+        })
+        .expect(201);
+
+      expect(createRes.body).toMatchObject({
+        title: "Read Your Write Lore",
+        slug: "read-your-write-lore",
+        content:
+          "Freshly written zircon beacon lore is searchable immediately.",
+        category: "consistency",
+      });
+
+      const readRes = await request(app.getHttpServer())
+        .get("/v1/projects/searchable-project/lore/read-your-write-lore")
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(readRes.body).toMatchObject({
+        id: createRes.body.id,
+        title: "Read Your Write Lore",
+        slug: "read-your-write-lore",
+      });
+
+      const searchRes = await request(app.getHttpServer())
+        .get(
+          "/v1/projects/searchable-project/search?q=zircon%20beacon&types=lore&limit=5",
+        )
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(searchRes.body).toMatchObject({
+        query: "zircon beacon",
+        total: 1,
+      });
+      expect(searchRes.body.results).toHaveLength(1);
+      expect(searchRes.body.results[0]).toMatchObject({
+        id: createRes.body.id,
+        type: "lore",
+        title: "Read Your Write Lore",
+        slug: "read-your-write-lore",
+        excerpt:
+          "Freshly written zircon beacon lore is searchable immediately.",
+        metadata: { category: "consistency" },
+      });
+    });
+
     it("searches timeline fields and returns date/significance metadata", async () => {
       const project = await createProject();
       await prisma.timelineEvent.create({

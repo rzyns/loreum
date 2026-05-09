@@ -1,6 +1,13 @@
-import { IsString, IsOptional, IsArray, MinLength } from "class-validator";
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  MinLength,
+  IsIn,
+} from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import type { UpdateLoreArticleRequest } from "@loreum/types";
+import { LORE_ARTICLE_CANON_STATUSES } from "./create-lore-article.dto";
 
 export class UpdateLoreArticleDto implements UpdateLoreArticleRequest {
   @ApiPropertyOptional()
@@ -19,6 +26,14 @@ export class UpdateLoreArticleDto implements UpdateLoreArticleRequest {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({
+    enum: LORE_ARTICLE_CANON_STATUSES,
+    description: "Canon/canonicality status for the lore article.",
+  })
+  @IsOptional()
+  @IsIn(LORE_ARTICLE_CANON_STATUSES)
+  canonStatus?: (typeof LORE_ARTICLE_CANON_STATUSES)[number];
 
   @ApiPropertyOptional()
   @IsOptional()

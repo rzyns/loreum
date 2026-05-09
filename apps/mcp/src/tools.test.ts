@@ -10,14 +10,17 @@ type ResourceHandler = (uri: URL) => Promise<unknown>;
 
 function createFakeServer() {
   const registeredTools = new Map<string, ToolHandler>();
+  const registeredToolSpecs = new Map<string, unknown>();
   const registeredResources = new Map<string, ResourceHandler>();
 
   return {
     registeredTools,
+    registeredToolSpecs,
     registeredResources,
     server: {
-      registerTool: ((name: string, _spec: unknown, handler: ToolHandler) => {
+      registerTool: ((name: string, spec: unknown, handler: ToolHandler) => {
         registeredTools.set(name, handler as ToolHandler);
+        registeredToolSpecs.set(name, spec);
         return {} as ReturnType<McpServer["registerTool"]>;
       }) as McpServer["registerTool"],
       resource: ((
@@ -428,9 +431,14 @@ test("create_relationship with unknown visibility does not advertise public worl
 });
 
 test("create_lore_article returns lore affordance envelope with public visibility unknown when not proven", async () => {
-  const { server, registeredTools } = createFakeServer();
-  const record = { id: "lore_1", slug: "founding", title: "Founding" };
-  const { api } = createApi(record);
+  const { server, registeredTools, registeredToolSpecs } = createFakeServer();
+  const record = {
+    id: "lore_1",
+    slug: "founding",
+    title: "Founding",
+    canonStatus: "draft",
+  };
+  const { api, apiCalls } = createApi(record);
 
   registerTools(server, api, { writeTools: ["create_lore_article"] });
 
@@ -439,15 +447,39 @@ test("create_lore_article returns lore affordance envelope with public visibilit
     createLoreArticle,
     "create_lore_article handler should be registered",
   );
+  const createLoreArticleSpec = registeredToolSpecs.get(
+    "create_lore_article",
+  ) as {
+    inputSchema?: Record<string, unknown>;
+  };
+  assert.ok(
+    createLoreArticleSpec.inputSchema?.canonStatus,
+    "create_lore_article input schema should expose canonStatus",
+  );
 
   const envelope = parseJsonContent(
     await createLoreArticle({
       projectSlug: "demo",
       title: "Founding",
       content: "Once...",
+      canonStatus: "draft",
     }),
   );
 
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo/lore",
+      options: {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Founding",
+          content: "Once...",
+          canonStatus: "draft",
+        }),
+      },
+    },
+  ]);
+  assert.equal(envelope.record.canonStatus, "draft");
   assert.deepEqual(envelope.links, {
     api: "/projects/demo/lore/founding",
     admin: "/projects/demo/lore/founding",

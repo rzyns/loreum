@@ -124,6 +124,13 @@ enum Visibility {
   UNLISTED
 }
 
+enum LoreArticleCanonStatus {
+  draft
+  staging
+  provisional
+  canon
+}
+
 model Project {
   id          String     @id @default(cuid())
   name        String
@@ -388,12 +395,13 @@ model TimelineEventEntity {
 // ── Lore ──
 
 model LoreArticle {
-  id        String  @id @default(cuid())
-  projectId String
-  title     String
-  slug      String
-  content   String  @db.Text
-  category  String?
+  id          String                 @id @default(cuid())
+  projectId   String
+  title       String
+  slug        String
+  content     String                 @db.Text
+  category    String?
+  canonStatus LoreArticleCanonStatus @default(provisional)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
