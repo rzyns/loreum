@@ -36,6 +36,7 @@ model User {
   preferences UserPreferences?
 
   projects Project[]
+  projectMemberships ProjectMembership[]
 
   @@index([email])
   @@index([lastActiveAt])
@@ -131,6 +132,67 @@ enum LoreArticleCanonStatus {
   canon
 }
 
+enum ActorKind {
+  HUMAN
+  AGENT
+  IMPORTED
+  GENERATED
+  SYSTEM
+}
+
+enum ContentSourceKind {
+  MANUAL
+  COLLABORATOR_SUGGESTION
+  MCP_AGENT
+  IN_APP_AI
+  IMPORT
+  SYSTEM
+}
+
+enum DraftTargetType {
+  ENTITY
+  RELATIONSHIP
+  LORE_ARTICLE
+  TIMELINE_EVENT
+  STORYBOARD_RECORD
+  PROJECT_METADATA
+}
+
+enum DraftOperation {
+  CREATE
+  UPDATE
+  DELETE
+  LINK
+  UNLINK
+  REORDER
+  BULK_IMPORT
+}
+
+enum DraftStatus {
+  DRAFT
+  SUBMITTED
+  CHANGES_REQUESTED
+  APPROVED
+  APPLIED
+  REJECTED
+  WITHDRAWN
+  SUPERSEDED
+  APPLICATION_FAILED
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
+enum ProjectActorRole {
+  OWNER
+  REVIEWER
+  CONTRIBUTOR
+  VIEWER
+  AGENT
+}
+
 model Project {
   id          String     @id @default(cuid())
   name        String
@@ -168,12 +230,33 @@ model Project {
   // MCP
   apiKeys        ApiKey[]
   pendingChanges PendingChange[]
+  draftProposals DraftProposal[]
+  auditEvents    AuditEvent[]
+
+  memberships ProjectMembership[]
 
   @@index([ownerId])
   @@map("projects")
 }
 
 // ── Entity (base for all world objects) ──
+
+model ProjectMembership {
+  id           String           @id @default(cuid())
+  projectId    String
+  userId       String
+  role         ProjectActorRole
+  capabilities String[]         @default([])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_memberships")
+}
 
 model Entity {
   id          String     @id @default(cuid())
@@ -626,6 +709,10 @@ model Map {
 
 enum ApiKeyPermission {
   READ_ONLY
+  DRAFT_WRITE
+  DRAFT_WRITE_SELF_APPROVE
+  CANONICAL_WRITE
+  // Legacy/current-schema compatibility while old keys and tests migrate.
   READ_WRITE
 }
 
@@ -647,7 +734,7 @@ model ApiKey {
   userId      String
   name        String
   keyHash     String           @unique
-  permissions ApiKeyPermission @default(READ_WRITE)
+  permissions ApiKeyPermission @default(DRAFT_WRITE)
   lastUsedAt  DateTime?
   expiresAt   DateTime?
   revokedAt   DateTime?
@@ -655,9 +742,93 @@ model ApiKey {
 
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   pendingChanges PendingChange[]
+  draftProposals DraftProposal[]
 
   @@index([projectId])
   @@map("api_keys")
+}
+
+model DraftProposal {
+  id                  String            @id @default(cuid())
+  projectId           String
+  batchId             String            @default(uuid())
+  targetType          DraftTargetType
+  operation           DraftOperation
+  targetId            String?
+  status              DraftStatus       @default(SUBMITTED)
+  proposedData        Json              @default("{}")
+  previousData        Json?
+  validation          Json              @default("{}")
+  displayName         String
+  displaySummary      String?           @db.Text
+  reviewNote          String?           @db.Text
+  rejectionReason     String?           @db.Text
+  failureCode         String?
+  failureMessage      String?           @db.Text
+  submittedByKind     ActorKind
+  submittedByUserId   String?
+  submittedByApiKeyId String?
+  submittedByLabel    String
+  sourceKind          ContentSourceKind
+  reviewedByUserId    String?
+  reviewedAt          DateTime?
+  appliedTargetId     String?
+  appliedAt           DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  project           Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submittedByApiKey ApiKey?      @relation(fields: [submittedByApiKeyId], references: [id], onDelete: SetNull)
+  auditEvents       AuditEvent[]
+
+  @@index([projectId, status, createdAt])
+  @@index([projectId, targetType, operation])
+  @@index([batchId])
+  @@map("draft_proposals")
+}
+
+model AuditEvent {
+  id                String            @id @default(cuid())
+  projectId         String
+  eventType         String
+  outcome           AuditOutcome      @default(SUCCESS)
+  actorKind         ActorKind
+  actorUserId       String?
+  actorApiKeyId     String?
+  actorLabel        String
+  sourceKind        ContentSourceKind
+  operation         DraftOperation?
+  targetType        DraftTargetType?
+  targetId          String?
+  targetModel       String?
+  targetDisplay     String?
+  draftId           String?
+  batchId           String?
+  approvalId        String?
+  summary           String            @db.Text
+  oldData           Json?
+  newData           Json?
+  diff              Json?
+  metadata          Json              @default("{}")
+  capabilityContext Json              @default("{}")
+  requestId         String?
+  correlationId     String?
+  causationId       String?
+  schemaVersion     Int               @default(1)
+  streamKey         String?
+  streamVersion     Int?
+  occurredAt        DateTime          @default(now())
+  committedAt       DateTime          @default(now())
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draft   DraftProposal? @relation(fields: [draftId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, occurredAt])
+  @@index([projectId, eventType, occurredAt])
+  @@index([projectId, actorKind, occurredAt])
+  @@index([draftId])
+  @@index([batchId])
+  @@map("audit_events")
 }
 
 model PendingChange {

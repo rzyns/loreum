@@ -8,7 +8,13 @@ import {
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
-const PERMISSIONS = ["READ_ONLY", "READ_WRITE"] as const;
+const PERMISSIONS = [
+  "READ_ONLY",
+  "DRAFT_WRITE",
+  "DRAFT_WRITE_SELF_APPROVE",
+  "CANONICAL_WRITE",
+  "READ_WRITE",
+] as const;
 
 export class CreateApiKeyDto {
   @ApiProperty({ example: "Claude Desktop" })
@@ -17,10 +23,10 @@ export class CreateApiKeyDto {
   @MaxLength(100)
   name!: string;
 
-  @ApiPropertyOptional({ enum: PERMISSIONS, default: "READ_WRITE" })
+  @ApiPropertyOptional({ enum: PERMISSIONS, default: "DRAFT_WRITE" })
   @IsOptional()
   @IsEnum(PERMISSIONS)
-  permissions?: "READ_ONLY" | "READ_WRITE";
+  permissions?: (typeof PERMISSIONS)[number];
 
   @ApiPropertyOptional({ example: "2026-12-31T00:00:00.000Z" })
   @IsOptional()

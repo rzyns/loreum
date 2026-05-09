@@ -9,6 +9,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
 import { GoogleStrategy } from "./strategies/google.strategy";
 import { AuthController } from "./controllers/auth.controller";
 import { CsrfMiddleware } from "./middleware/csrf.middleware";
+import { ProjectCapabilitiesService } from "./project-capabilities.service";
 
 @Module({
   imports: [
@@ -28,12 +29,13 @@ import { CsrfMiddleware } from "./middleware/csrf.middleware";
     PasswordService,
     JwtStrategy,
     GoogleStrategy,
+    ProjectCapabilitiesService,
     // Uncomment as providers are added:
     // DiscordStrategy,
     // MicrosoftStrategy,
     // LinkedInStrategy,
   ],
-  exports: [AuthService],
+  exports: [AuthService, ProjectCapabilitiesService],
 })
 export class AuthModule {
   configure(consumer: MiddlewareConsumer) {

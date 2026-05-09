@@ -15,6 +15,7 @@ import { RelationshipsModule } from "./relationships/relationships.module";
 import { TimelineModule } from "./timeline/timeline.module";
 import { LoreModule } from "./lore/lore.module";
 import { StoryboardModule } from "./storyboard/storyboard.module";
+import { AuditModule } from "./audit/audit.module";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -47,6 +48,7 @@ import { AppController } from "./app.controller";
     TimelineModule,
     LoreModule,
     StoryboardModule,
+    AuditModule,
     // SearchModule,
     // GraphModule,
   ],

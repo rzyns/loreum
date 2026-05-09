@@ -27,7 +27,7 @@ export class ApiKeysService {
         userId,
         name: dto.name,
         keyHash: hashKey(rawKey),
-        permissions: dto.permissions ?? "READ_WRITE",
+        permissions: dto.permissions ?? "DRAFT_WRITE",
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
       },
       select: {

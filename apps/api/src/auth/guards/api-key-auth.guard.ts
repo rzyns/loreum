@@ -63,8 +63,21 @@ export class ApiKeyAuthGuard extends AuthGuard("jwt") implements CanActivate {
       return;
     }
 
-    if (user.apiKey?.permissions !== "READ_WRITE") {
-      throw new ForbiddenException("API key does not have write permission");
+    const permission = user.apiKey?.permissions;
+    const isDraftMutation = /\/drafts(?:\/|$)/.test(request.path);
+    const canMutate = isDraftMutation
+      ? permission === "DRAFT_WRITE" ||
+        permission === "DRAFT_WRITE_SELF_APPROVE" ||
+        permission === "CANONICAL_WRITE" ||
+        permission === "READ_WRITE"
+      : permission === "CANONICAL_WRITE" || permission === "READ_WRITE";
+
+    if (!canMutate) {
+      throw new ForbiddenException(
+        isDraftMutation
+          ? "API key does not have draft-write permission"
+          : "API key does not have canonical write permission",
+      );
     }
 
     if (!this.getRequestedProjectIdentifier(request)) {
