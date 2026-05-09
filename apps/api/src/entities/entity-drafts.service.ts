@@ -10,13 +10,18 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { generateUniqueSlug } from "../common/utils/slug";
 import { CreateEntityDto } from "./dto/create-entity.dto";
-import { EntitiesService } from "./entities.service";
+const listInclude = {
+  character: true,
+  location: true,
+  organization: true,
+  item: { include: { itemType: true } },
+  entityTags: { include: { tag: true } },
+} as const;
 
 @Injectable()
 export class EntityDraftsService {
   constructor(
     private prisma: PrismaService,
-    private entitiesService: EntitiesService,
     private capabilities: ProjectCapabilitiesService,
     private auditService: AuditService,
   ) {}
@@ -92,51 +97,80 @@ export class EntityDraftsService {
     if (!draft) {
       throw new NotFoundException("Entity draft not found");
     }
+    this.capabilities.assertCanApproveDraft(actor, draft);
+
+    if (draft.status === "APPLIED") {
+      return this.toAppliedResponse(draft);
+    }
     if (draft.status !== "SUBMITTED" && draft.status !== "DRAFT") {
       throw new BadRequestException("Entity draft is not pending approval");
     }
 
-    this.capabilities.assertCanApproveDraft(actor, draft);
-
     const proposedData = this.toCreateEntityDto(draft.proposedData);
-    const canonical = await this.entitiesService.create(
-      projectId,
-      proposedData,
-    );
+    const { applied, canonical } = await this.prisma.$transaction(
+      async (tx) => {
+        const claimed = await tx.draftProposal.updateMany({
+          where: {
+            id: draft.id,
+            projectId,
+            targetType: "ENTITY",
+            operation: "CREATE",
+            status: { in: ["SUBMITTED", "DRAFT"] },
+          },
+          data: {
+            status: "APPROVED",
+            reviewNote: input?.reviewNote,
+            reviewedByUserId: actor.userId,
+            reviewedAt: new Date(),
+          },
+        });
 
-    const applied = await this.prisma.draftProposal.update({
-      where: { id: draft.id },
-      data: {
-        status: "APPLIED",
-        reviewNote: input?.reviewNote,
-        reviewedByUserId: actor.userId,
-        reviewedAt: new Date(),
-        appliedTargetId: canonical.id,
-        appliedAt: new Date(),
+        if (claimed.count !== 1) {
+          throw new BadRequestException("Entity draft is not pending approval");
+        }
+
+        const canonical = await this.createCanonicalEntity(
+          tx,
+          projectId,
+          proposedData,
+        );
+        const applied = await tx.draftProposal.update({
+          where: { id: draft.id },
+          data: {
+            status: "APPLIED",
+            appliedTargetId: canonical.id,
+            appliedAt: new Date(),
+          },
+        });
+
+        await this.auditService.record(
+          {
+            projectId,
+            eventType: "DRAFT_ENTITY_APPLIED",
+            actor,
+            operation: "CREATE",
+            targetType: "ENTITY",
+            targetId: canonical.id,
+            targetModel: "Entity",
+            targetDisplay: canonical.name,
+            draftId: draft.id,
+            batchId: draft.batchId,
+            approvalId: applied.id,
+            summary: `Applied entity draft ${canonical.name}`,
+            newData: canonical,
+          },
+          { client: tx },
+        );
+
+        return { applied, canonical };
       },
-    });
-
-    await this.auditService.record({
-      projectId,
-      eventType: "DRAFT_ENTITY_APPLIED",
-      actor,
-      operation: "CREATE",
-      targetType: "ENTITY",
-      targetId: canonical.id,
-      targetModel: "Entity",
-      targetDisplay: canonical.name,
-      draftId: draft.id,
-      batchId: draft.batchId,
-      approvalId: applied.id,
-      summary: `Applied entity draft ${canonical.name}`,
-      newData: canonical,
-    });
+    );
 
     return {
       status: "applied",
       canonicalApplied: true,
-      draftId: draft.id,
-      batchId: draft.batchId,
+      draftId: applied.id,
+      batchId: applied.batchId,
       canonical,
     };
   }
@@ -161,28 +195,52 @@ export class EntityDraftsService {
     if (!draft) {
       throw new NotFoundException("Entity draft not found");
     }
+    if (draft.status !== "SUBMITTED" && draft.status !== "DRAFT") {
+      throw new BadRequestException("Entity draft is not pending rejection");
+    }
 
-    const rejected = await this.prisma.draftProposal.update({
-      where: { id: draft.id },
-      data: {
-        status: "REJECTED",
-        rejectionReason: input?.rejectionReason,
-        reviewedByUserId: actor.userId,
-        reviewedAt: new Date(),
-      },
-    });
+    const rejected = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.draftProposal.updateMany({
+        where: {
+          id: draft.id,
+          projectId,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: { in: ["SUBMITTED", "DRAFT"] },
+        },
+        data: {
+          status: "REJECTED",
+          rejectionReason: input?.rejectionReason,
+          reviewedByUserId: actor.userId,
+          reviewedAt: new Date(),
+        },
+      });
 
-    await this.auditService.record({
-      projectId,
-      eventType: "DRAFT_ENTITY_REJECTED",
-      actor,
-      operation: "CREATE",
-      targetType: "ENTITY",
-      draftId: draft.id,
-      batchId: draft.batchId,
-      targetDisplay: draft.displayName,
-      summary: `Rejected entity draft ${draft.displayName}`,
-      metadata: { rejectionReason: input?.rejectionReason },
+      if (claimed.count !== 1) {
+        throw new BadRequestException("Entity draft is not pending rejection");
+      }
+
+      const rejected = await tx.draftProposal.findUniqueOrThrow({
+        where: { id: draft.id },
+      });
+
+      await this.auditService.record(
+        {
+          projectId,
+          eventType: "DRAFT_ENTITY_REJECTED",
+          actor,
+          operation: "CREATE",
+          targetType: "ENTITY",
+          draftId: draft.id,
+          batchId: draft.batchId,
+          targetDisplay: draft.displayName,
+          summary: `Rejected entity draft ${draft.displayName}`,
+          metadata: { rejectionReason: input?.rejectionReason },
+        },
+        { client: tx },
+      );
+
+      return rejected;
     });
 
     return {
@@ -191,6 +249,89 @@ export class EntityDraftsService {
       draftId: rejected.id,
       batchId: rejected.batchId,
       rejectionReason: rejected.rejectionReason,
+    };
+  }
+
+  private async createCanonicalEntity(
+    client: Prisma.TransactionClient,
+    projectId: string,
+    dto: CreateEntityDto,
+  ) {
+    const slug = await generateUniqueSlug(
+      client as unknown as PrismaService,
+      "entity",
+      dto.name,
+      projectId,
+    );
+
+    const entity = await client.entity.create({
+      data: {
+        projectId,
+        type: dto.type,
+        name: dto.name,
+        slug,
+        summary: dto.summary,
+        description: dto.description,
+        backstory: dto.backstory,
+        secrets: dto.secrets,
+        notes: dto.notes,
+        imageUrl: dto.imageUrl,
+      },
+    });
+
+    switch (dto.type) {
+      case "CHARACTER":
+        await client.character.create({
+          data: { entityId: entity.id, ...dto.character },
+        });
+        break;
+      case "LOCATION":
+        await client.location.create({
+          data: { entityId: entity.id, ...dto.location },
+        });
+        break;
+      case "ORGANIZATION":
+        await client.organization.create({
+          data: { entityId: entity.id, ...dto.organization },
+        });
+        break;
+      case "ITEM":
+        await client.item.create({
+          data: {
+            entityId: entity.id,
+            itemTypeId: dto.item?.itemTypeId,
+            fields: (dto.item?.fields ?? {}) as Prisma.InputJsonValue,
+          },
+        });
+        break;
+    }
+
+    return client.entity.findUniqueOrThrow({
+      where: { id: entity.id },
+      include: listInclude,
+    });
+  }
+
+  private async toAppliedResponse(draft: {
+    id: string;
+    batchId: string;
+    appliedTargetId: string | null;
+  }) {
+    if (!draft.appliedTargetId) {
+      throw new BadRequestException("Entity draft is missing applied target");
+    }
+
+    const canonical = await this.prisma.entity.findUniqueOrThrow({
+      where: { id: draft.appliedTargetId },
+      include: listInclude,
+    });
+
+    return {
+      status: "applied",
+      canonicalApplied: true,
+      draftId: draft.id,
+      batchId: draft.batchId,
+      canonical,
     };
   }
 

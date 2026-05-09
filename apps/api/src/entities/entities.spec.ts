@@ -90,6 +90,21 @@ describe("Entities (integration)", () => {
       expect(res.body.draftId).toEqual(expect.any(String));
       expect(res.body.batchId).toEqual(expect.any(String));
       expect(await prisma.entity.count()).toBe(beforeCount);
+
+      const canonicalList = await request(app.getHttpServer())
+        .get(base())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(canonicalList.body).toHaveLength(beforeCount);
+      expect(
+        canonicalList.body.map((entity: { slug: string }) => entity.slug),
+      ).not.toContain(res.body.proposedSlug);
+      await request(app.getHttpServer())
+        .get(`${base()}/${res.body.proposedSlug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(404);
     });
 
     it("prevents DRAFT_WRITE API keys from approving submitted drafts", async () => {
@@ -135,6 +150,19 @@ describe("Entities (integration)", () => {
         },
       });
       expect(await prisma.entity.count()).toBe(1);
+      const canonicalList = await request(app.getHttpServer())
+        .get(base())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(
+        canonicalList.body.map((entity: { slug: string }) => entity.slug),
+      ).toContain("staged-valley");
+      await request(app.getHttpServer())
+        .get(`${base()}/staged-valley`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
       const auditEvents = await prisma.auditEvent.findMany({
         where: { draftId: submit.body.draftId },
         orderBy: { occurredAt: "asc" },
@@ -176,6 +204,69 @@ describe("Entities (integration)", () => {
         "DRAFT_ENTITY_SUBMITTED",
         "DRAFT_ENTITY_REJECTED",
       ]);
+    });
+    it("prevents rejection after a draft has already been applied", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Already Applied Character" })
+        .expect(201);
+
+      const applied = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "approved before rejection attempt" })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "too late" })
+        .expect(400);
+
+      const draft = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: submit.body.draftId },
+      });
+      expect(draft.status).toBe("APPLIED");
+      expect(draft.appliedTargetId).toBe(applied.body.canonical.id);
+      expect(await prisma.entity.count()).toBe(1);
+    });
+
+    it("returns the applied canonical entity for repeated approval retries", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "Retry Applied Location" })
+        .expect(201);
+
+      const first = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "first approval" })
+        .expect(200);
+
+      const retry = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "retry approval" })
+        .expect(200);
+
+      expect(retry.body).toMatchObject({
+        status: "applied",
+        canonicalApplied: true,
+        draftId: submit.body.draftId,
+        canonical: {
+          id: first.body.canonical.id,
+          name: "Retry Applied Location",
+        },
+      });
+      expect(await prisma.entity.count()).toBe(1);
     });
   });
 

@@ -21,13 +21,15 @@ Tracked tasks for Loreum. Near-term is the next couple weeks, long-term is every
 
 ### MCP Review Queue (Staging Area)
 
-- [ ] PendingChange service: create pending change, list by project/status/batch, accept, reject
-- [ ] Accept logic: apply `proposedData` to the target model (create/update/delete), set status to ACCEPTED
-- [ ] Reject logic: set status to REJECTED
-- [ ] Batch accept: apply all PENDING changes in a batch in dependency order
+Legacy note: the older `PendingChange` checklist is superseded for new work by the Phase-2 `DraftProposal`/`AuditEvent` lifecycle in `AGENTIC_CMS_DRAFT_LIFECYCLE_SPEC.md` and `AGENTIC_CMS_TECHNICAL_DESIGN.md`. Keep `PendingChange` only as legacy schema context unless a deliberate cleanup migrates or retires it.
+
+- [ ] DraftProposal service: create draft proposal, list by project/status/batch, approve/apply, reject
+- [ ] Approve/apply logic: atomically apply `proposedData` to the target model (create/update/delete), set status to APPLIED, and append audit history
+- [ ] Reject logic: reject only pre-approval states and append audit history
+- [ ] Batch approve/apply: apply all eligible submitted drafts in a batch in dependency order
 - [ ] Snapshot `previousData` on update/delete for diff display
-- [ ] PendingChange controller: `GET /projects/:slug/pending-changes`, `POST .../accept`, `POST .../reject`, `POST .../batch-accept`
-- [ ] Route MCP write tools through PendingChange instead of direct writes
+- [ ] DraftProposal controller: draft-list endpoint plus target-specific approve/reject endpoints
+- [ ] Route MCP write tools through DraftProposal endpoints instead of direct writes
 - [ ] MCP tool responses: return confirmation that change was staged, not applied
 - [ ] Review queue page: list view grouped by batch, operation badges (create/update/delete)
 - [ ] Diff view for updates (side-by-side, highlight changed fields)

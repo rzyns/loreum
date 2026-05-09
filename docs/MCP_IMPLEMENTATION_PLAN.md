@@ -3,8 +3,8 @@
 Scoped plan for completing the MCP server to a testable state. Covers API prerequisites, auth, review queue, and MCP tool expansion.
 
 **Created:** 2026-04-24
-**Updated:** 2026-04-29
-**Status:** Phases 1–3 read expansion complete; write safety queue remains future work
+**Updated:** 2026-05-09
+**Status:** Phases 1–3 read expansion complete; write safety now follows the newer `DraftProposal`/`AuditEvent` lifecycle design for new implementation work
 **Reference:** See TODO.md > Near-Term for task tracking
 
 ---
@@ -33,13 +33,13 @@ The MCP server (`apps/mcp/src/index.ts`, with tool registration in `apps/mcp/src
 
 The MCP read surface is now broad enough for an agent to navigate from projects into entities, lore, timelines, relationships, tags, and storyboard structures using tools backed by existing API endpoints. Storyboard scene access is intentionally limited to `list_scenes_by_chapter`, which requires a known chapter ID obtained from work/chapter structure.
 
-Existing mutation tools remain unchanged and still call direct write endpoints. They do **not** route through `PendingChange`, and this document should not be read as claiming review-queue write safety for MCP writes.
+Legacy note: this April plan predates the Phase-2 `DraftProposal`/`AuditEvent` design. New MCP write-safety work should route through draft proposal endpoints and should not expand the older `PendingChange` sketch unless a deliberate migration/retirement task chooses to do so.
 
 Intentionally deferred items:
 
 - Direct `get_scene` support.
 - Direct `get_chapter` / `list_chapters` support.
-- Write safety via a `PendingChange` review queue for MCP mutations.
+- Write safety via the Phase-2 `DraftProposal`/`AuditEvent` lifecycle for MCP mutations.
 
 MCP tool tests use fake API calls against the extracted tool-registration seam. They verify URL construction and JSON text responses without requiring a live API server, Postgres, or secrets.
 
@@ -65,7 +65,7 @@ MCP tool tests use fake API calls against the extracted tool-registration seam. 
 
 **Search is basic, not full-text infrastructure:** The `search_project` tool now returns real Prisma `contains` results. OpenSearch/search-vector work remains long-term.
 
-**Write tools bypass review queue:** All mutation tools write directly to the DB. The spec requires all MCP writes to go through `PendingChange` staging.
+**Write tools and review queue:** New implementation work supersedes the older `PendingChange`-only sketch with the Phase-2 `DraftProposal`/`AuditEvent` lifecycle. MCP mutation tools should stage through draft proposal endpoints unless a future cleanup deliberately migrates or retires the legacy `PendingChange` model.
 
 **Style Guide doesn't exist yet:** The model, migration, service, controller, and schema fields (`voiceNotes`, `styleNotes`) are all long-term work. The `get_style_guide` and `set_style_guide` MCP tools cannot be built until the Style Guide feature is implemented.
 
@@ -143,30 +143,30 @@ All API endpoints already exist. MCP-side only.
 
 ### Phase 4: Review Queue (API + MCP + UI)
 
-**Goal:** All MCP write operations stage changes as `PendingChange` records instead of writing directly. Users review and accept/reject from the web UI.
+**Goal:** All MCP write operations stage changes as `DraftProposal` records, with `AuditEvent` history, instead of writing directly. Users review and approve/apply or reject from the API/UI.
 
 **Scope:** API-side service + controller, MCP tool handler updates, web UI.
 
 #### API work (`apps/api/`)
 
-1. PendingChange service:
-   - `create(projectId, apiKeyId, batchId, operation, targetModel, targetId, proposedData, previousData)`
+1. Draft proposal service:
+   - Create `DraftProposal` rows with actor/source metadata, batch grouping, operation, target type, proposed data, and display fields
    - `listByProject(projectId, { status?, batchId? })`
-   - `accept(id)` — apply `proposedData` to target model, set status ACCEPTED
-   - `reject(id)` — set status REJECTED
-   - `batchAccept(batchId)` — accept all PENDING in batch, in dependency order (creates before relationships)
+   - `approveAndApply(id)` — apply `proposedData` to the canonical target under the draft lifecycle, set status APPLIED, and write audit history
+   - `reject(id)` — reject only pre-approval draft states and write audit history
+   - `batchApproveAndApply(batchId)` — approve/apply all eligible submitted drafts in batch, in dependency order (creates before relationships)
    - Snapshot `previousData` on update/delete for diff display
 
-2. PendingChange controller:
-   - `GET /projects/:slug/pending-changes?status=&batchId=`
-   - `POST /projects/:slug/pending-changes/:id/accept`
-   - `POST /projects/:slug/pending-changes/:id/reject`
-   - `POST /projects/:slug/pending-changes/batch-accept` (body: `{ batchId }`)
+2. Draft proposal controller:
+   - `GET /projects/:slug/drafts/entities?status=&batchId=` (or the generic draft-list endpoint chosen by the draft lifecycle API)
+   - `POST /projects/:slug/drafts/entities/:id/approve`
+   - `POST /projects/:slug/drafts/entities/:id/reject`
+   - Batch approval remains a follow-up once dependency ordering is designed
 
 #### MCP work (`apps/mcp/`)
 
 3. Update existing write tools (`create_entity`, `update_entity`, `create_relationship`, `create_lore_article`) to:
-   - Call a new pending change endpoint instead of the direct CRUD endpoint
+   - Call a draft proposal endpoint instead of the direct CRUD endpoint
    - Return confirmation that the change was staged, not applied
    - Include `batchId` (generated per MCP session or conversation)
 
@@ -185,21 +185,21 @@ All API endpoints already exist. MCP-side only.
 
 ### Phase 5: Expand MCP Write Tools (blocked on Phase 4)
 
-**Goal:** Add the remaining mutation tools, all routing through PendingChange.
+**Goal:** Add the remaining mutation tools, all routing through `DraftProposal` staging.
 
 | Tool                    | API Endpoint             | Notes |
 | ----------------------- | ------------------------ | ----- |
-| `update_lore_article`   | Staged via PendingChange |       |
-| `delete_entity`         | Staged via PendingChange |       |
-| `delete_relationship`   | Staged via PendingChange |       |
-| `delete_lore_article`   | Staged via PendingChange |       |
-| `create_timeline_event` | Staged via PendingChange |       |
-| `update_timeline_event` | Staged via PendingChange |       |
-| `delete_timeline_event` | Staged via PendingChange |       |
-| `create_scene`          | Staged via PendingChange |       |
-| `update_scene`          | Staged via PendingChange |       |
-| `create_plot_point`     | Staged via PendingChange |       |
-| `update_plot_point`     | Staged via PendingChange |       |
+| `update_lore_article`   | Staged via DraftProposal |       |
+| `delete_entity`         | Staged via DraftProposal |       |
+| `delete_relationship`   | Staged via DraftProposal |       |
+| `delete_lore_article`   | Staged via DraftProposal |       |
+| `create_timeline_event` | Staged via DraftProposal |       |
+| `update_timeline_event` | Staged via DraftProposal |       |
+| `delete_timeline_event` | Staged via DraftProposal |       |
+| `create_scene`          | Staged via DraftProposal |       |
+| `update_scene`          | Staged via DraftProposal |       |
+| `create_plot_point`     | Staged via DraftProposal |       |
+| `update_plot_point`     | Staged via DraftProposal |       |
 
 ---
 

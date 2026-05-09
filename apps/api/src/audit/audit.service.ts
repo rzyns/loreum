@@ -47,7 +47,10 @@ type AuditRecordInput = {
 export class AuditService {
   constructor(private prisma: PrismaService) {}
 
-  async record(input: AuditRecordInput) {
+  async record(
+    input: AuditRecordInput,
+    options?: { client?: Prisma.TransactionClient },
+  ) {
     if (!input.projectId || !input.actor.projectId) {
       throw new BadRequestException("Audit events require project context");
     }
@@ -57,7 +60,9 @@ export class AuditService {
       );
     }
 
-    return this.prisma.auditEvent.create({
+    const client = options?.client ?? this.prisma;
+
+    return client.auditEvent.create({
       data: {
         projectId: input.projectId,
         eventType: input.eventType,
