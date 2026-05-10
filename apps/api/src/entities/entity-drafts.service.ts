@@ -174,9 +174,9 @@ export class EntityDraftsService {
         id: event.id,
         eventType: event.eventType,
         actorKind: event.actorKind,
-        actorLabel: event.actorLabel,
+        actorLabel: redactInfrastructureSecrets(event.actorLabel),
         sourceKind: event.sourceKind,
-        summary: event.summary,
+        summary: redactInfrastructureSecrets(event.summary),
         occurredAt: event.occurredAt,
       })),
     };

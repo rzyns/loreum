@@ -53,6 +53,7 @@ describe("Entities (integration)", () => {
       | "DRAFT_WRITE"
       | "DRAFT_WRITE_SELF_APPROVE"
       | "CANONICAL_WRITE",
+    name = `${permissions} test key`,
   ) {
     const project = await prisma.project.findUniqueOrThrow({
       where: { slug: projectSlug },
@@ -60,7 +61,7 @@ describe("Entities (integration)", () => {
     });
     const apiKeysService = module.get(ApiKeysService);
     return apiKeysService.create(project.id, ownerId, {
-      name: `${permissions} test key`,
+      name,
       permissions,
     });
   }
@@ -266,6 +267,81 @@ describe("Entities (integration)", () => {
         expect(JSON.stringify(list.body)).not.toContain(secret);
         expect(JSON.stringify(detail.body)).not.toContain(secret);
       }
+    });
+
+    it("redacts secret and PII patterns from draft detail review history", async () => {
+      const secretDraftName =
+        "Boundary lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const secretApiKeyName = "review submitter 123-45-6789";
+      const key = await createApiKey("DRAFT_WRITE", secretApiKeyName);
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({
+          type: "CHARACTER",
+          name: secretDraftName,
+          summary: "Safe detail summary",
+        })
+        .expect(201);
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_CUSTOM_AUDIT_CONTEXT",
+          actorKind: "AGENT",
+          actorApiKeyId: key.id,
+          actorLabel: `API key: ${secretApiKeyName}`,
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          draftId: submit.body.draftId,
+          batchId: submit.body.batchId,
+          summary: "Synthetic audit context with safe summary",
+        },
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_SUBMITTED",
+            actorKind: "AGENT",
+            actorLabel: "API key: project API key",
+            summary: "Submitted entity draft Boundary [REDACTED]",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_CUSTOM_AUDIT_CONTEXT",
+            actorKind: "AGENT",
+            actorLabel: "API key: review submitter [REDACTED]",
+            summary: "Synthetic audit context with safe summary",
+          }),
+        ]),
+      );
+      expect(JSON.stringify(detail.body)).toContain("[REDACTED]");
+      for (const rawValue of [secretDraftName, secretApiKeyName]) {
+        expect(JSON.stringify(detail.body.reviewHistory)).not.toContain(
+          rawValue,
+        );
+      }
+      expect(detail.body.proposed).toMatchObject({
+        name: "Boundary [REDACTED]",
+        summary: "Safe detail summary",
+      });
+      expect(detail.body.proposed).not.toHaveProperty("description");
+      expect(await prisma.entity.count()).toBe(0);
+      await request(app.getHttpServer())
+        .get(`${base()}/${submit.body.proposedSlug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(404);
     });
 
     it("prevents non-review API keys from reading the review queue", async () => {
