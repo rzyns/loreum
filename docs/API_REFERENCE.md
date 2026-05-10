@@ -711,7 +711,7 @@ Authentication required via the same session cookie or bearer token.
 
 The MCP server exposes Loreum's worldstate to AI assistants via the [Model Context Protocol](https://modelcontextprotocol.io). It supports local stdio integration for Claude Desktop, Claude Code, Cursor, and other MCP-compatible clients; controlled HTTP deployments are supported but must remain read-only by default.
 
-Project API keys are scoped to one project and have `READ_ONLY` or `READ_WRITE` permissions. `READ_ONLY` keys may call read endpoints only. `READ_WRITE` keys may mutate only the project they were issued for. Project-scoped API keys must not be accepted for account-level operations such as creating new projects.
+Project API keys are scoped to one project. Target permissions are `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`: `READ_ONLY` allows broad project-scoped data-plane reads only; `DRAFT_WRITE` adds draft/proposal submission; `CANONICAL_WRITE` adds direct canonical writes plus draft approval/application, including self-authored drafts. Legacy `READ_WRITE` is a compatibility alias for `CANONICAL_WRITE`, not a new-key recommendation. Project-scoped API keys must not read across projects and must not be accepted for account-level/control-plane operations such as creating new projects.
 
 ### Connection
 
@@ -836,7 +836,7 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 
 ### Mutation Tools
 
-Mutation tools are hidden from read-only MCP discovery. For remote HTTP deployments, `MCP_READ_ONLY=false` is not sufficient by itself; writes require `MCP_ENABLE_WRITES=true` and an explicit `MCP_WRITE_TOOLS` allowlist after API authorization tests prove read/write permission and project-scope enforcement. Start any approved write-capable smoke test with `create_entity` against a disposable project only.
+Mutation tools are hidden from read-only MCP discovery. For remote HTTP deployments, `MCP_READ_ONLY=false` is not sufficient by itself; writes require `MCP_ENABLE_WRITES=true` and an explicit `MCP_WRITE_TOOLS` allowlist after API authorization tests prove target permission semantics and project-scope enforcement. Any all-write HTTP MCP posture is staging-only for `testworld`; it is not a production/default recommendation. Start any approved write-capable smoke test with `create_entity` against a disposable project only.
 
 The current MCP mutation handlers call Loreum API mutation routes directly. They do not yet represent the planned review-queue flow.
 

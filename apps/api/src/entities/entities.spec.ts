@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import request from "supertest";
+import * as crypto from "crypto";
 import { INestApplication } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
@@ -11,6 +12,21 @@ import {
 } from "../test/helpers";
 
 describe("Entities (integration)", () => {
+  type ApiKeyPermission =
+    | "READ_ONLY"
+    | "DRAFT_WRITE"
+    | "DRAFT_WRITE_SELF_APPROVE"
+    | "CANONICAL_WRITE"
+    | "READ_WRITE";
+
+  const projectReadPermissions: ApiKeyPermission[] = [
+    "READ_ONLY",
+    "DRAFT_WRITE",
+    "DRAFT_WRITE_SELF_APPROVE",
+    "CANONICAL_WRITE",
+    "READ_WRITE",
+  ];
+
   let app: INestApplication;
   let prisma: PrismaService;
   let module: TestingModule;
@@ -48,17 +64,33 @@ describe("Entities (integration)", () => {
   const draftBase = () => `/v1/projects/${projectSlug}/drafts/entities`;
 
   async function createApiKey(
-    permissions:
-      | "READ_ONLY"
-      | "DRAFT_WRITE"
-      | "DRAFT_WRITE_SELF_APPROVE"
-      | "CANONICAL_WRITE",
+    permissions: ApiKeyPermission,
     name = `${permissions} test key`,
   ) {
     const project = await prisma.project.findUniqueOrThrow({
       where: { slug: projectSlug },
       select: { id: true },
     });
+
+    if (
+      permissions === "READ_WRITE" ||
+      permissions === "DRAFT_WRITE_SELF_APPROVE"
+    ) {
+      const rawKey = `lrm_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const apiKey = await prisma.apiKey.create({
+        data: {
+          projectId: project.id,
+          userId: ownerId,
+          name,
+          keyHash,
+          permissions,
+        },
+        select: { id: true, name: true, permissions: true, createdAt: true },
+      });
+      return { ...apiKey, key: rawKey };
+    }
+
     const apiKeysService = module.get(ApiKeysService);
     return apiKeysService.create(project.id, ownerId, {
       name,
@@ -344,13 +376,50 @@ describe("Entities (integration)", () => {
         .expect(404);
     });
 
-    it("prevents non-review API keys from reading the review queue", async () => {
-      const key = await createApiKey("DRAFT_WRITE");
-      await request(app.getHttpServer())
-        .get(draftBase())
-        .set("Authorization", `Bearer ${key.key}`)
-        .expect(403);
-    });
+    it.each(projectReadPermissions)(
+      "allows project-scoped %s API keys to read their review queue and draft detail",
+      async (permission) => {
+        const submit = await request(app.getHttpServer())
+          .post(draftBase())
+          .set("Cookie", authCookie)
+          .set("x-csrf-token", csrfToken)
+          .send({
+            type: "CHARACTER",
+            name: `${permission} Reviewable Draft`,
+            summary: "Project-scoped read summary",
+            description: "detail body stays out of safe review payload",
+          })
+          .expect(201);
+        const key = await createApiKey(permission);
+
+        const list = await request(app.getHttpServer())
+          .get(draftBase())
+          .set("Authorization", `Bearer ${key.key}`)
+          .expect(200);
+        expect(list.body.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: submit.body.draftId,
+              status: "SUBMITTED",
+              displaySummary: "Project-scoped read summary",
+            }),
+          ]),
+        );
+
+        const detail = await request(app.getHttpServer())
+          .get(`${draftBase()}/${submit.body.draftId}`)
+          .set("Authorization", `Bearer ${key.key}`)
+          .expect(200);
+        expect(detail.body).toMatchObject({
+          id: submit.body.draftId,
+          displaySummary: "Project-scoped read summary",
+          proposed: { summary: "Project-scoped read summary" },
+        });
+        expect(JSON.stringify(detail.body)).not.toContain(
+          "detail body stays out of safe review payload",
+        );
+      },
+    );
 
     it("does not leak drafts across project scope", async () => {
       const otherAuth = await createAuthenticatedUser(prisma, module, {
@@ -399,6 +468,35 @@ describe("Entities (integration)", () => {
 
       expect(await prisma.entity.count()).toBe(0);
     });
+
+    it.each<ApiKeyPermission>([
+      "CANONICAL_WRITE",
+      "READ_WRITE",
+      "DRAFT_WRITE_SELF_APPROVE",
+    ])(
+      "lets %s approve and apply its own submitted draft",
+      async (permission) => {
+        const key = await createApiKey(permission);
+        const submit = await request(app.getHttpServer())
+          .post(draftBase())
+          .set("Authorization", `Bearer ${key.key}`)
+          .send({ type: "LOCATION", name: `${permission} Self Applied Draft` })
+          .expect(201);
+
+        const res = await request(app.getHttpServer())
+          .post(`${draftBase()}/${submit.body.draftId}/approve`)
+          .set("Authorization", `Bearer ${key.key}`)
+          .send({ reviewNote: "self-approval compatibility matrix" })
+          .expect(200);
+
+        expect(res.body).toMatchObject({
+          status: "applied",
+          canonicalApplied: true,
+          draftId: submit.body.draftId,
+          canonical: { slug: submit.body.proposedSlug },
+        });
+      },
+    );
 
     it("lets an authorized owner approve, apply, and audit an entity draft", async () => {
       const submit = await request(app.getHttpServer())
@@ -690,11 +788,39 @@ describe("Entities (integration)", () => {
         expect(JSON.stringify(detail.body)).not.toContain(secret);
       }
 
-      const key = await createApiKey("DRAFT_WRITE");
-      await request(app.getHttpServer())
-        .get(`${auditBase()}/${event.id}`)
-        .set("Authorization", `Bearer ${key.key}`)
-        .expect(403);
+      for (const permission of projectReadPermissions) {
+        const key = await createApiKey(
+          permission,
+          `${permission} audit read key`,
+        );
+
+        const apiKeyActivity = await request(app.getHttpServer())
+          .get(activityBase())
+          .set("Authorization", `Bearer ${key.key}`)
+          .expect(200);
+        expect(apiKeyActivity.body.items).toEqual([
+          expect.objectContaining({
+            id: event.id,
+            targetDisplay: "Secret-Bearing Entity [REDACTED]",
+            summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+          }),
+        ]);
+
+        const apiKeyDetail = await request(app.getHttpServer())
+          .get(`${auditBase()}/${event.id}`)
+          .set("Authorization", `Bearer ${key.key}`)
+          .expect(200);
+        expect(apiKeyDetail.body).toMatchObject({
+          id: event.id,
+          newData: { authorization: "[REDACTED]" },
+          metadata: { requestPayload: { api_key: "[REDACTED]" } },
+          capabilityContext: { token: "[REDACTED]" },
+        });
+        for (const secret of [openAiKey, githubPat, jwt, ssn, rawKey]) {
+          expect(JSON.stringify(apiKeyActivity.body)).not.toContain(secret);
+          expect(JSON.stringify(apiKeyDetail.body)).not.toContain(secret);
+        }
+      }
     });
 
     it("does not expose audit feed or details across project scope", async () => {
@@ -749,7 +875,7 @@ describe("Entities (integration)", () => {
         .get(ApiKeysService)
         .create(otherProjectRow.id, otherAuth.user.id, {
           name: "other project key",
-          permissions: "READ_WRITE",
+          permissions: "CANONICAL_WRITE",
         });
       const submit = await request(app.getHttpServer())
         .post(draftBase())

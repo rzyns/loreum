@@ -9,7 +9,7 @@ import {
   cleanDatabase,
 } from "../test/helpers";
 
-describe("API key authorization boundary (integration)", () => {
+describe.sequential("API key authorization boundary (integration)", () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let module: TestingModule;
@@ -50,7 +50,7 @@ describe("API key authorization boundary (integration)", () => {
 
   async function createApiKey(
     projectSlug: string,
-    permissions: "READ_ONLY" | "READ_WRITE",
+    permissions: "READ_ONLY" | "DRAFT_WRITE" | "CANONICAL_WRITE",
   ): Promise<string> {
     const res = await request(app.getHttpServer())
       .post(`/v1/projects/${projectSlug}/api-keys`)
@@ -94,24 +94,45 @@ describe("API key authorization boundary (integration)", () => {
       .expect(403);
   });
 
-  it("allows a READ_WRITE API key to mutate only the project it was issued for", async () => {
-    const apiKey = await createApiKey(projectASlug, "READ_WRITE");
+  it("enforces draft-write and canonical-write tiers inside project scope", async () => {
+    const draftWriteKey = await createApiKey(projectASlug, "DRAFT_WRITE");
 
-    const createRes = await request(app.getHttpServer())
-      .post(`/v1/projects/${projectASlug}/entities`)
-      .set(bearer(apiKey))
-      .send({ type: "CHARACTER", name: "Allowed Entity" })
+    const draftRes = await request(app.getHttpServer())
+      .post(`/v1/projects/${projectASlug}/drafts/entities`)
+      .set(bearer(draftWriteKey))
+      .send({ type: "CHARACTER", name: "Draft Write Proposal" })
       .expect(201);
-    expect(createRes.body.slug).toBe("allowed-entity");
+
+    expect(draftRes.body).toMatchObject({
+      canonicalApplied: false,
+      proposedSlug: "draft-write-proposal",
+    });
+
+    await request(app.getHttpServer())
+      .post(`/v1/projects/${projectASlug}/entities`)
+      .set(bearer(draftWriteKey))
+      .send({ type: "CHARACTER", name: "Forbidden Canonical Entity" })
+      .expect(403);
+
+    const canonicalWriteKey = await createApiKey(
+      projectASlug,
+      "CANONICAL_WRITE",
+    );
+    const canonicalCreateRes = await request(app.getHttpServer())
+      .post(`/v1/projects/${projectASlug}/entities`)
+      .set(bearer(canonicalWriteKey))
+      .send({ type: "CHARACTER", name: "Canonical Write Entity" })
+      .expect(201);
+    expect(canonicalCreateRes.body.slug).toBe("canonical-write-entity");
 
     await request(app.getHttpServer())
       .get(`/v1/projects/${projectBSlug}`)
-      .set(bearer(apiKey))
+      .set(bearer(canonicalWriteKey))
       .expect(403);
 
     await request(app.getHttpServer())
       .post(`/v1/projects/${projectBSlug}/entities`)
-      .set(bearer(apiKey))
+      .set(bearer(canonicalWriteKey))
       .send({ type: "CHARACTER", name: "Cross Project Entity" })
       .expect(403);
   });
@@ -133,13 +154,24 @@ describe("API key authorization boundary (integration)", () => {
   });
 
   it("rejects project-global account-level writes for project-scoped API keys", async () => {
-    const apiKey = await createApiKey(projectASlug, "READ_WRITE");
+    const apiKey = await createApiKey(projectASlug, "CANONICAL_WRITE");
 
     await request(app.getHttpServer())
       .post("/v1/projects")
       .set(bearer(apiKey))
       .send({ name: "API Key Created Project" })
       .expect(403);
+  });
+
+  it("rejects deprecated or legacy compatibility modes for newly created API keys", async () => {
+    for (const permissions of ["READ_WRITE", "DRAFT_WRITE_SELF_APPROVE"]) {
+      await request(app.getHttpServer())
+        .post(`/v1/projects/${projectASlug}/api-keys`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ name: `${permissions} rejected key`, permissions })
+        .expect(400);
+    }
   });
 
   it("preserves JWT-cookie session project lists", async () => {

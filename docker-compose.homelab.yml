@@ -139,6 +139,9 @@ services:
       context: .
       dockerfile: apps/mcp/Dockerfile
     container_name: loreum-mcp${CONTAINER_SUFFIX:-}
+    # HTTP MCP defaults are read-only/fail-closed. Write exposure requires
+    # MCP_ENABLE_WRITES=true plus MCP_WRITE_TOOLS; MCP_ALLOW_ALL_WRITE_TOOLS=true
+    # is only for staging-only testworld smoke coverage, not production/default.
     environment:
       NODE_ENV: production
       MCP_TRANSPORT: http

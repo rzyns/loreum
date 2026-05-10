@@ -6,10 +6,32 @@ import { Button } from "@loreum/ui/button";
 import { Key, Trash2 } from "lucide-react";
 import { CreateApiKeyDialog } from "@/components/dialogs/create-api-key-dialog";
 
+type ApiKeyPermission =
+  | "READ_ONLY"
+  | "DRAFT_WRITE"
+  | "CANONICAL_WRITE"
+  | "READ_WRITE"
+  | "DRAFT_WRITE_SELF_APPROVE";
+
+function formatApiKeyPermission(permission: ApiKeyPermission) {
+  switch (permission) {
+    case "READ_ONLY":
+      return "Read only";
+    case "DRAFT_WRITE":
+      return "Draft / Proposal write";
+    case "CANONICAL_WRITE":
+      return "Canonical write";
+    case "READ_WRITE":
+      return "Canonical write (legacy READ_WRITE)";
+    case "DRAFT_WRITE_SELF_APPROVE":
+      return "Canonical write (deprecated self-approve)";
+  }
+}
+
 interface ApiKey {
   id: string;
   name: string;
-  permissions: "READ_ONLY" | "READ_WRITE";
+  permissions: ApiKeyPermission;
   lastUsedAt: string | null;
   expiresAt: string | null;
   createdAt: string;
@@ -82,7 +104,7 @@ export function ApiKeysPanel({ projectSlug }: ApiKeysPanelProps) {
       {revealedKey && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
           <p className="mb-2 text-sm font-medium">
-            Copy your API key now — it won't be shown again.
+            Copy your API key now — it won&apos;t be shown again.
           </p>
           <code className="block break-all rounded bg-muted px-3 py-2 text-sm">
             {revealedKey}
@@ -120,7 +142,7 @@ export function ApiKeysPanel({ projectSlug }: ApiKeysPanelProps) {
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{k.name}</span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                    {k.permissions === "READ_ONLY" ? "Read" : "Read / Write"}
+                    {formatApiKeyPermission(k.permissions)}
                   </span>
                 </div>
                 <div className="mt-1 flex gap-4 text-xs text-muted-foreground">

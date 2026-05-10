@@ -710,6 +710,7 @@ model Map {
 enum ApiKeyPermission {
   READ_ONLY
   DRAFT_WRITE
+  // Deprecated/current-schema compatibility; backend maps existing rows to CANONICAL_WRITE.
   DRAFT_WRITE_SELF_APPROVE
   CANONICAL_WRITE
   // Legacy/current-schema compatibility while old keys and tests migrate.

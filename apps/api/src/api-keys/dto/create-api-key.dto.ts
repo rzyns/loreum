@@ -8,13 +8,7 @@ import {
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
-const PERMISSIONS = [
-  "READ_ONLY",
-  "DRAFT_WRITE",
-  "DRAFT_WRITE_SELF_APPROVE",
-  "CANONICAL_WRITE",
-  "READ_WRITE",
-] as const;
+const PERMISSIONS = ["READ_ONLY", "DRAFT_WRITE", "CANONICAL_WRITE"] as const;
 
 export class CreateApiKeyDto {
   @ApiProperty({ example: "Claude Desktop" })

@@ -287,12 +287,12 @@ All AI features that consume tokens are **Pro only**. The MCP server remains fre
 
 Users generate project-scoped API keys from project settings in the web UI. Each key has a name, configurable permission level, and expiration date.
 
-Current implementation note: API keys currently use a binary `READ_ONLY` / `READ_WRITE` enum. Phase-2 agentic CMS work should split “can submit reviewable drafts” from “can directly mutate canonical data”; see section 16 and the Agentic CMS draft/audit design docs.
+Current implementation note: API keys historically used a binary `READ_ONLY` / `READ_WRITE` enum. Phase-2 agentic CMS work uses `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; `READ_WRITE` remains a legacy compatibility alias for `CANONICAL_WRITE` while old rows/clients migrate. Reads are liberal but project-scoped: no cross-project reads, account-global mutation, or control-plane access.
 
 | Feature                                  | Status  | Tier |
 | ---------------------------------------- | ------- | ---- |
 | API key generation UI (project settings) | Planned | Free |
-| Key permissions: read-only / read-write  | Planned | Free |
+| Key permissions: read-only / draft-write / canonical-write, with legacy read-write compatibility | Planned | Free |
 | Key expiration + revocation              | Planned | Free |
 | Last-used tracking                       | Planned | Free |
 | Multiple keys per project                | Planned | Free |
@@ -310,7 +310,7 @@ Current implementation note: API keys currently use a binary `READ_ONLY` / `READ
 - `id`, `projectId`, `userId` (who created it)
 - `name` (user label: "Claude Desktop", "Cursor", etc.)
 - `keyHash` (bcrypt hash, the plaintext is shown once on creation)
-- `permissions` (current enum: `READ_ONLY`, `READ_WRITE`; Phase-2 target modes: `READ_ONLY`, `DRAFT_WRITE`, `DRAFT_WRITE_SELF_APPROVE`, exceptional `CANONICAL_WRITE`)
+- `permissions` (Phase-2 target modes: `READ_ONLY`, `DRAFT_WRITE`, `CANONICAL_WRITE`; legacy `READ_WRITE` aliases `CANONICAL_WRITE`; deprecated `DRAFT_WRITE_SELF_APPROVE` is compatibility-only if present in older schema rows)
 - `lastUsedAt`, `expiresAt`, `revokedAt`
 - `createdAt`
 
@@ -461,7 +461,7 @@ Phase-2 draft/audit lifecycle details are expanded in [`AGENTIC_CMS_DRAFT_LIFECY
 
 #### How It Works
 
-Target behavior: every MCP write operation (create, update, delete) produces a reviewable draft/proposal record instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state.
+Target behavior: every MCP write operation (create, update, delete) produces a reviewable draft/proposal record instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state. Any all-write HTTP MCP deployment posture is staging-only for `testworld`, not a production/default recommendation.
 
 Current implementation note: the existing schema includes an early `PendingChange` model, but it is under-specified for Phase-2 actor/source, approval/application, capability, and audit requirements. New implementation work should follow the `DraftProposal` + append-only `AuditEvent` design rather than expanding `PendingChange` unless a deliberate migration/rename is chosen.
 

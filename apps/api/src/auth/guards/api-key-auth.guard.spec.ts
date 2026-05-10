@@ -80,4 +80,19 @@ describe("ApiKeyAuthGuard API key mutation modes", () => {
       true,
     );
   });
+
+  it("treats deprecated DRAFT_WRITE_SELF_APPROVE rows as canonical-write compatibility", async () => {
+    const { guard } = guardWithPermission("DRAFT_WRITE_SELF_APPROVE");
+    const request = {
+      cookies: {},
+      headers: { authorization: "Bearer lrm_test" },
+      method: "PATCH",
+      path: "/projects/demo/entities/entity-1",
+      params: { projectSlug: "demo" },
+    };
+
+    await expect(guard.canActivate(contextForRequest(request))).resolves.toBe(
+      true,
+    );
+  });
 });

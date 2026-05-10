@@ -59,6 +59,9 @@ describe("ProjectCapabilitiesService", () => {
       expect.arrayContaining([
         "project:read",
         "canonical:read",
+        "draft:review",
+        "audit:read_summary",
+        "audit:read_detail",
         "draft:create",
         "draft:submit",
       ]),
@@ -111,5 +114,41 @@ describe("ProjectCapabilitiesService", () => {
         submittedByApiKeyId: "submit-key-1",
       }),
     ).not.toThrow();
+  });
+
+  it("maps CANONICAL_WRITE, READ_WRITE, and deprecated self-approve rows to canonical write capabilities", () => {
+    for (const permissions of [
+      "CANONICAL_WRITE",
+      "READ_WRITE",
+      "DRAFT_WRITE_SELF_APPROVE",
+    ] as const) {
+      const actor = service.resolveApiKeyActor({
+        project: { id: "project-1", slug: "demo", ownerId: "owner-1" },
+        apiKey: {
+          id: `${permissions}-key`,
+          name: permissions,
+          permissions,
+          userId: "owner-1",
+        },
+      });
+
+      expect(actor.capabilities).toEqual(
+        expect.arrayContaining([
+          "project:read",
+          "canonical:read",
+          "draft:review",
+          "audit:read_summary",
+          "audit:read_detail",
+          "draft:create",
+          "draft:submit",
+          "draft:approve",
+          "draft:self_approve",
+          "canonical:apply_draft",
+          "canonical:create",
+          "canonical:update",
+          "canonical:delete",
+        ]),
+      );
+    }
   });
 });

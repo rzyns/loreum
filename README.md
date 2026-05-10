@@ -40,7 +40,7 @@ AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant
 - **Style Guide** - Voice, tone, POV, pacing, dialogue rules, scene overrides, and per-character voice notes
 - **AI Integration (MCP)** - Read tools for MCP-compatible AI, with remote write exposure disabled by default and controlled by explicit server-side allowlists
 - **Review Queue** - Planned safety path for AI-proposed changes with diff review before canon updates
-- **API Key Auth** - Project-scoped keys with read-only or read-write permissions for MCP authentication
+- **API Key Auth** - Project-scoped keys with `READ_ONLY`, `DRAFT_WRITE`, or `CANONICAL_WRITE` target permissions for MCP authentication
 - **Public Wiki** - Share your world as a read-only site while keeping secrets and drafts private
 - **Maps** - Upload map images and pin locations with coordinates
 - **Search** - Full-text search across all content
@@ -49,7 +49,7 @@ AI plugs into all of it. Connect Claude, Cursor, or any MCP-compatible assistant
 
 1. **Build your world** in the Loreum web app with entities, relationships, timelines, lore, and a style guide
 2. **Add AI** by bringing your own via MCP or using the built-in assistant. Build solo or invite collaborators
-3. **Write with context** as AI reads your canon to generate grounded content; review-queue-backed AI suggestions are planned, while current remote MCP deployments should remain read-only by default
+3. **Write with context** as AI reads your canon to generate grounded content; review-queue-backed AI suggestions are planned, while current remote HTTP MCP deployments should remain read-only/fail-closed by default
 
 ## Tech Stack
 
@@ -120,7 +120,7 @@ Connect any MCP-compatible AI to your world data. Generate a project-scoped API 
 }
 ```
 
-Project API keys are scoped to one project and may be read-only or read-write. Remote HTTP MCP deployments must stay read-only by default; exposing mutation tools requires an explicit server-side write opt-in (`MCP_ENABLE_WRITES=true`) plus a narrow `MCP_WRITE_TOOLS` allowlist after API permission and project-scope enforcement has been verified. The current direct-write MCP tools are not a substitute for the planned review queue. [Full MCP documentation](https://loreum.app/docs/mcp).
+Project API keys are scoped to one project. Target permissions are `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; legacy `READ_WRITE` is a compatibility alias for canonical write capability, not a new-key recommendation. Remote HTTP MCP deployments must stay read-only/fail-closed by default; exposing mutation tools requires an explicit server-side write opt-in (`MCP_ENABLE_WRITES=true`) plus a narrow `MCP_WRITE_TOOLS` allowlist after API permission and project-scope enforcement has been verified. Any all-write HTTP MCP posture is staging-only for `testworld`, not production/default. The current direct-write MCP tools are not a substitute for the planned review queue. [Full MCP documentation](https://loreum.app/docs/mcp).
 
 ## Project Structure
 
