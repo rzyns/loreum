@@ -14,6 +14,12 @@ const INFRASTRUCTURE_SECRET_KEYS = new Set([
 ]);
 
 const LOREUM_RAW_KEY_PATTERN = /lrm_[a-zA-Z0-9_-]{16,}/g;
+const OPENAI_API_KEY_PATTERN =
+  /\bsk-(?:proj-|live-|test-)?[A-Za-z0-9_-]{20,}\b/g;
+const GITHUB_PAT_PATTERN = /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g;
+const JWT_PATTERN =
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+const US_SSN_PATTERN = /\b\d{3}-\d{2}-\d{4}\b/g;
 const BEARER_LOOKING_PATTERN = /\bbearer\s+[A-Za-z0-9._~+\-/]{16,}\b/gi;
 
 type RedactionOptions = {
@@ -40,7 +46,11 @@ function isInfrastructureSecretKey(key: string): boolean {
 function redactString(value: string): string {
   return value
     .replace(BEARER_LOOKING_PATTERN, REDACTED)
-    .replace(LOREUM_RAW_KEY_PATTERN, REDACTED);
+    .replace(LOREUM_RAW_KEY_PATTERN, REDACTED)
+    .replace(OPENAI_API_KEY_PATTERN, REDACTED)
+    .replace(GITHUB_PAT_PATTERN, REDACTED)
+    .replace(JWT_PATTERN, REDACTED)
+    .replace(US_SSN_PATTERN, REDACTED);
 }
 
 export function redactInfrastructureSecrets<T>(

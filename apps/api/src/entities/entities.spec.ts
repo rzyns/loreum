@@ -220,10 +220,15 @@ describe("Entities (integration)", () => {
       );
     });
 
-    it("redacts secret-like values from review queue summaries and proposed detail summaries", async () => {
-      const secretSummary =
-        "Visible prefix Bearer abcdefghijklmnopqrstuvwxyz123456 suffix";
-      const rawKey = "lrm_abcdefghijklmnopqrstuvwxyz";
+    it("redacts realistic secret and PII patterns from review queue summaries and proposed detail summaries", async () => {
+      const openAiKey =
+        "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const githubPat = "github_pat_11AA22BB33CC44DD55EE66FF77GG88HH99II00JJ";
+      const ssn = "123-45-6789";
+      const jwt =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJsb3JldW0tZHJhZnQifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+      const rawKey = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const secretSummary = `Visible prefix ${openAiKey} ${githubPat} ${ssn} suffix`;
       const submit = await request(app.getHttpServer())
         .post(draftBase())
         .set("Cookie", authCookie)
@@ -232,7 +237,7 @@ describe("Entities (integration)", () => {
           type: "CHARACTER",
           name: "Redacted Draft Summary",
           summary: secretSummary,
-          description: `full body must remain hidden ${rawKey}`,
+          description: `full body must remain hidden ${rawKey} ${jwt}`,
         })
         .expect(201);
 
@@ -244,7 +249,8 @@ describe("Entities (integration)", () => {
       expect(list.body.items).toEqual([
         expect.objectContaining({
           id: submit.body.draftId,
-          displaySummary: "Visible prefix [REDACTED] suffix",
+          displaySummary:
+            "Visible prefix [REDACTED] [REDACTED] [REDACTED] suffix",
         }),
       ]);
 
@@ -254,15 +260,12 @@ describe("Entities (integration)", () => {
         .set("x-csrf-token", csrfToken)
         .expect(200);
       expect(detail.body.proposed).toMatchObject({
-        summary: "Visible prefix [REDACTED] suffix",
+        summary: "Visible prefix [REDACTED] [REDACTED] [REDACTED] suffix",
       });
-      expect(JSON.stringify(list.body)).not.toContain(
-        "Bearer abcdefghijklmnopqrstuvwxyz",
-      );
-      expect(JSON.stringify(detail.body)).not.toContain(
-        "Bearer abcdefghijklmnopqrstuvwxyz",
-      );
-      expect(JSON.stringify(detail.body)).not.toContain(rawKey);
+      for (const secret of [openAiKey, githubPat, ssn, rawKey, jwt]) {
+        expect(JSON.stringify(list.body)).not.toContain(secret);
+        expect(JSON.stringify(detail.body)).not.toContain(secret);
+      }
     });
 
     it("prevents non-review API keys from reading the review queue", async () => {
@@ -525,6 +528,13 @@ describe("Entities (integration)", () => {
     });
 
     it("returns redacted audit details only to actors with audit detail capability", async () => {
+      const openAiKey =
+        "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const githubPat = "github_pat_11AA22BB33CC44DD55EE66FF77GG88HH99II00JJ";
+      const jwt =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJsb3JldW0tYXVkaXQifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+      const ssn = "123-45-6789";
+      const rawKey = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
       const project = await prisma.project.findUniqueOrThrow({
         where: { slug: projectSlug },
         select: { id: true },
@@ -539,25 +549,38 @@ describe("Entities (integration)", () => {
           sourceKind: "MCP_AGENT",
           operation: "CREATE",
           targetType: "ENTITY",
-          targetDisplay: "Secret-Bearing Entity",
-          summary:
-            "raw summary with lrm_abcdefghijklmnopqrstuvwxyz should be replaced",
+          targetDisplay: `Secret-Bearing Entity ${openAiKey}`,
+          summary: `raw summary with ${rawKey} should be replaced`,
           newData: {
             name: "Secret-Bearing Entity",
-            authorization: "Bearer abcdefghijklmnopqrstuvwxyz123456",
+            authorization: githubPat,
             description: "domain prose is detail-only",
           },
           metadata: {
             requestPayload: {
-              api_key: "lrm_abcdefghijklmnopqrstuvwxyz",
+              api_key: rawKey,
+              submitterSsn: ssn,
             },
           },
           capabilityContext: {
-            token: "Bearer zyxwvutsrqponmlkjihgfedcba987654",
+            token: jwt,
             capabilities: ["draft:create"],
           },
         },
       });
+
+      const activity = await request(app.getHttpServer())
+        .get(activityBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(activity.body.items).toEqual([
+        expect.objectContaining({
+          id: event.id,
+          targetDisplay: "Secret-Bearing Entity [REDACTED]",
+          summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+        }),
+      ]);
 
       const detail = await request(app.getHttpServer())
         .get(`${auditBase()}/${event.id}`)
@@ -568,8 +591,8 @@ describe("Entities (integration)", () => {
       expect(detail.body).toMatchObject({
         id: event.id,
         eventType: "DRAFT_ENTITY_SUBMITTED",
-        summary: "Agent proposed entity Secret-Bearing Entity",
-        targetDisplay: "Secret-Bearing Entity",
+        summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+        targetDisplay: "Secret-Bearing Entity [REDACTED]",
         newData: {
           name: "Secret-Bearing Entity",
           authorization: "[REDACTED]",
@@ -578,6 +601,7 @@ describe("Entities (integration)", () => {
         metadata: {
           requestPayload: {
             api_key: "[REDACTED]",
+            submitterSsn: "[REDACTED]",
           },
         },
         capabilityContext: {
@@ -585,12 +609,10 @@ describe("Entities (integration)", () => {
           capabilities: ["draft:create"],
         },
       });
-      expect(JSON.stringify(detail.body)).not.toContain(
-        "lrm_abcdefghijklmnopqrstuvwxyz",
-      );
-      expect(JSON.stringify(detail.body)).not.toContain(
-        "Bearer abcdefghijklmnopqrstuvwxyz",
-      );
+      for (const secret of [openAiKey, githubPat, jwt, ssn, rawKey]) {
+        expect(JSON.stringify(activity.body)).not.toContain(secret);
+        expect(JSON.stringify(detail.body)).not.toContain(secret);
+      }
 
       const key = await createApiKey("DRAFT_WRITE");
       await request(app.getHttpServer())
@@ -669,6 +691,10 @@ describe("Entities (integration)", () => {
         .expect(403);
       await request(app.getHttpServer())
         .get(`${auditBase()}/${auditEvent.id}`)
+        .set("Authorization", `Bearer ${otherKey.key}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(draftBase())
         .set("Authorization", `Bearer ${otherKey.key}`)
         .expect(403);
       await request(app.getHttpServer())
