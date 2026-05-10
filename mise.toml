@@ -1,0 +1,12 @@
+[tools]
+node = "24"
+pnpm = "latest"
+
+[env]
+LOREUM_IMAGE_TAG = "{{ exec(command='git rev-parse --short HEAD') }}"
+
+[env.mise]
+file = ".env"
+
+[deps]
+pnpm = { auto = true }
