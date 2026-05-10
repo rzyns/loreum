@@ -72,7 +72,7 @@ Out of scope for the first slice:
 - Remote MCP write-mode enablement.
 - Deployment or homelab stack changes.
 - Dolt/DoltgreSQL.
-- Full review queue UI polish.
+- Broad review queue UI polish beyond the current local project Review queue and Activity surfaces.
 - Drafts for relationships, lore articles, timeline, storyboard, imports, or batch dependency resolution.
 - Direct canonical write by trusted agents.
 - Async application jobs unless synchronous application proves unworkable.
@@ -610,6 +610,16 @@ This task's safety constraints remain binding:
 - No remote MCP write enablement.
 - No remote mutating MCP calls.
 - No secrets in logs or handoffs.
+
+### 8.4 Current local review/activity UI surface
+
+As of the `kanban/wmcp-reviewqueue-2026-05-09` local batch, the first product-visible UI slice exists for project-scoped review and operational audit visibility:
+
+- `/projects/:slug/review` lists submitted entity-create drafts, fetches explicit draft detail, labels proposed values as staged/non-canonical, and offers approve/reject actions only to the project owner UI while backend capabilities remain authoritative.
+- `/projects/:slug/activity` lists safe activity summaries from project audit events and fetches redacted audit detail only through the gated audit-detail endpoint.
+- Canonical project entity and lore detail pages may render a pending-draft affordance that links to the Review queue, but they must not fetch draft detail or render proposed draft content.
+
+The surface is intentionally limited to the already-implemented entity-create draft workflow. Relationship, lore, timeline, storyboard, import, and richer collaborator review flows remain later phases.
 
 ## 9. Testing strategy
 

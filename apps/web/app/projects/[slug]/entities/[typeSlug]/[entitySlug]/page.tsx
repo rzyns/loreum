@@ -15,6 +15,7 @@ import {
   RichTextSection,
   mergeRelationships,
 } from "../../_components/entity-sections";
+import { PendingDraftAffordance } from "@/components/pending-draft-affordance";
 import { Pencil, Save, X, Trash2 } from "lucide-react";
 
 interface FieldSchema {
@@ -219,6 +220,7 @@ export default function ItemDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <PendingDraftAffordance projectSlug={params.slug} surface="entity" />
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-muted-foreground">

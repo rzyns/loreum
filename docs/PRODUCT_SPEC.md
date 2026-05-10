@@ -52,8 +52,10 @@ No email/password authentication. OAuth only - avoids the burden of managing pas
 | Team invitations                                 | Planned | Pro  |
 | Roles: owner, editor, viewer, commenter          | Planned | Pro  |
 | Real-time collaboration (live editing)           | Planned | Pro  |
-| Activity feed / audit log                        | Planned | Pro  |
+| Activity feed / audit log                        | Partial | Pro  |
 | Project templates (genre starters)               | Planned | Free |
+
+Current partial activity/review implementation: project owners can use a project-scoped Review queue to inspect submitted entity-create drafts, see staged/non-canonical proposed values, approve/apply or reject them through the API, and open a separate Activity surface that shows safe operational audit summaries with gated audit-detail inspection. Canonical entity/lore pages may show a pending-review affordance, but they must not render proposed draft bodies as canonical content.
 
 #### Public Wiki
 

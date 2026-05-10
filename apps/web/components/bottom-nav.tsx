@@ -8,6 +8,8 @@ import {
   Clock,
   ScrollText,
   Map,
+  ClipboardCheck,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +19,8 @@ interface BottomNavProps {
 
 const navItems = [
   { icon: BookOpen, label: "Entities", href: "entities" },
+  { icon: ClipboardCheck, label: "Review", href: "review" },
+  { icon: History, label: "Activity", href: "activity" },
   { icon: Network, label: "Graph", href: "relationships" },
   { icon: Clock, label: "Timeline", href: "timeline" },
   { icon: ScrollText, label: "Lore", href: "lore" },
@@ -32,8 +36,7 @@ export function BottomNav({ projectSlug }: BottomNavProps) {
       <div className="flex h-14 items-center justify-around">
         {navItems.map((item) => {
           const href = `${basePath}/${item.href}`;
-          const isActive =
-            pathname === href || pathname.startsWith(`${href}/`);
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link
@@ -43,7 +46,7 @@ export function BottomNav({ projectSlug }: BottomNavProps) {
                 "flex flex-col items-center gap-0.5 px-3 py-1.5 text-xs transition-colors",
                 isActive
                   ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <item.icon className="h-5 w-5" />

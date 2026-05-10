@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { PendingDraftAffordance } from "@/components/pending-draft-affordance";
 import { Button } from "@loreum/ui/button";
 import { Input } from "@loreum/ui/input";
 import { Textarea } from "@loreum/ui/textarea";
@@ -209,6 +210,7 @@ export default function OrganizationDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
+      <PendingDraftAffordance projectSlug={params.slug} surface="entity" />
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-muted-foreground">Organization</span>

@@ -10,6 +10,7 @@ import { Textarea } from "@loreum/ui/textarea";
 import { Label } from "@loreum/ui/label";
 import { Card, CardContent } from "@loreum/ui/card";
 import { Markdown } from "@/components/markdown";
+import { PendingDraftAffordance } from "@/components/pending-draft-affordance";
 import { Pencil, Trash2, Save, X } from "lucide-react";
 
 export default function LoreArticlePage() {
@@ -104,6 +105,7 @@ export default function LoreArticlePage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <PendingDraftAffordance projectSlug={params.slug} surface="lore" />
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">

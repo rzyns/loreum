@@ -31,6 +31,8 @@ import {
   Clock,
   ScrollText,
   Map,
+  ClipboardCheck,
+  History,
   PanelLeftClose,
   ChevronRight,
   Plus,
@@ -63,6 +65,8 @@ const otherNav = [
   { icon: Clock, label: "Timeline", href: "timeline" },
   { icon: ScrollText, label: "Lore", href: "lore" },
   { icon: Map, label: "Storyboard", href: "storyboard" },
+  { icon: ClipboardCheck, label: "Review queue", href: "review" },
+  { icon: History, label: "Activity", href: "activity" },
 ];
 
 export function ProjectSidebar({
