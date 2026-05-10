@@ -220,6 +220,51 @@ describe("Entities (integration)", () => {
       );
     });
 
+    it("redacts secret-like values from review queue summaries and proposed detail summaries", async () => {
+      const secretSummary =
+        "Visible prefix Bearer abcdefghijklmnopqrstuvwxyz123456 suffix";
+      const rawKey = "lrm_abcdefghijklmnopqrstuvwxyz";
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Redacted Draft Summary",
+          summary: secretSummary,
+          description: `full body must remain hidden ${rawKey}`,
+        })
+        .expect(201);
+
+      const list = await request(app.getHttpServer())
+        .get(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(list.body.items).toEqual([
+        expect.objectContaining({
+          id: submit.body.draftId,
+          displaySummary: "Visible prefix [REDACTED] suffix",
+        }),
+      ]);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(detail.body.proposed).toMatchObject({
+        summary: "Visible prefix [REDACTED] suffix",
+      });
+      expect(JSON.stringify(list.body)).not.toContain(
+        "Bearer abcdefghijklmnopqrstuvwxyz",
+      );
+      expect(JSON.stringify(detail.body)).not.toContain(
+        "Bearer abcdefghijklmnopqrstuvwxyz",
+      );
+      expect(JSON.stringify(detail.body)).not.toContain(rawKey);
+    });
+
     it("prevents non-review API keys from reading the review queue", async () => {
       const key = await createApiKey("DRAFT_WRITE");
       await request(app.getHttpServer())
@@ -586,6 +631,50 @@ describe("Entities (integration)", () => {
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
         .expect(404);
+    });
+
+    it("rejects API keys scoped to another project before audit or review data is read", async () => {
+      const otherAuth = await createAuthenticatedUser(prisma, module, {
+        email: "other-key-owner@example.com",
+      });
+      const otherProject = await request(app.getHttpServer())
+        .post("/v1/projects")
+        .set("Cookie", otherAuth.cookie)
+        .set("x-csrf-token", otherAuth.csrfToken)
+        .send({ name: "Other API Key World" })
+        .expect(201);
+      const otherProjectRow = await prisma.project.findUniqueOrThrow({
+        where: { slug: otherProject.body.slug },
+        select: { id: true },
+      });
+      const otherKey = await module
+        .get(ApiKeysService)
+        .create(otherProjectRow.id, otherAuth.user.id, {
+          name: "other project key",
+          permissions: "READ_WRITE",
+        });
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Current Project Draft" })
+        .expect(201);
+      const auditEvent = await prisma.auditEvent.findFirstOrThrow({
+        where: { draftId: submit.body.draftId },
+      });
+
+      await request(app.getHttpServer())
+        .get(activityBase())
+        .set("Authorization", `Bearer ${otherKey.key}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${auditBase()}/${auditEvent.id}`)
+        .set("Authorization", `Bearer ${otherKey.key}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Authorization", `Bearer ${otherKey.key}`)
+        .expect(403);
     });
   });
 

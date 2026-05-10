@@ -85,4 +85,31 @@ describe("ProjectCapabilitiesService", () => {
       }),
     ).toThrow(ForbiddenException);
   });
+
+  it("blocks an otherwise approval-capable actor from same-user approval without self-approve", () => {
+    const reviewerWithoutSelfApprove = {
+      projectId: "project-1",
+      projectSlug: "demo",
+      kind: "AGENT" as const,
+      sourceKind: "MCP_AGENT" as const,
+      userId: "owner-1",
+      apiKeyId: "review-key-1",
+      label: "API key: reviewer",
+      capabilities: ["draft:approve", "canonical:apply_draft"],
+    };
+
+    expect(() =>
+      service.assertCanApproveDraft(reviewerWithoutSelfApprove, {
+        submittedByUserId: "owner-1",
+        submittedByApiKeyId: "submit-key-1",
+      }),
+    ).toThrow(ForbiddenException);
+
+    expect(() =>
+      service.assertCanApproveDraft(reviewerWithoutSelfApprove, {
+        submittedByUserId: "other-user",
+        submittedByApiKeyId: "submit-key-1",
+      }),
+    ).not.toThrow();
+  });
 });

@@ -12,6 +12,7 @@ import {
 import type { ActorContext } from "../auth/actor-context";
 import { ProjectCapabilitiesService } from "../auth/project-capabilities.service";
 import { AuditService } from "../audit/audit.service";
+import { redactInfrastructureSecrets } from "../audit/audit-redaction";
 import { PrismaService } from "../prisma/prisma.service";
 import { generateUniqueSlug } from "../common/utils/slug";
 import { CreateEntityDto } from "./dto/create-entity.dto";
@@ -458,10 +459,10 @@ export class EntityDraftsService {
       status: draft.status,
       targetType: draft.targetType,
       operation: draft.operation,
-      displayName: draft.displayName,
-      displaySummary: draft.displaySummary,
+      displayName: this.redactSafeText(draft.displayName),
+      displaySummary: this.redactSafeText(draft.displaySummary),
       submittedByKind: draft.submittedByKind,
-      submittedByLabel: draft.submittedByLabel,
+      submittedByLabel: this.redactSafeText(draft.submittedByLabel),
       sourceKind: draft.sourceKind,
       canonicalApplied: Boolean(draft.appliedTargetId || draft.appliedAt),
       createdAt: draft.createdAt,
@@ -476,10 +477,18 @@ export class EntityDraftsService {
     const proposed = value as Record<string, Prisma.JsonValue>;
     return {
       type: proposed.type,
-      name: proposed.name,
-      slug: proposed.slug,
-      summary: proposed.summary,
+      name: this.redactJsonValue(proposed.name),
+      slug: this.redactJsonValue(proposed.slug),
+      summary: this.redactJsonValue(proposed.summary),
     };
+  }
+
+  private redactSafeText(value: string | null): string | null {
+    return value === null ? null : redactInfrastructureSecrets(value);
+  }
+
+  private redactJsonValue(value: Prisma.JsonValue | undefined) {
+    return redactInfrastructureSecrets(value);
   }
 
   private parsePageNumber(
