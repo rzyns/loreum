@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "../../generated/prisma/client";
+import {
+  DraftOperation,
+  DraftStatus,
+  DraftTargetType,
+  Prisma,
+} from "../../generated/prisma/client";
 import type { ActorContext } from "../auth/actor-context";
 import { ProjectCapabilitiesService } from "../auth/project-capabilities.service";
 import { AuditService } from "../audit/audit.service";
@@ -76,6 +81,104 @@ export class EntityDraftsService {
     });
 
     return this.toSubmittedResponse(draft, proposedSlug);
+  }
+
+  async listReviewQueue(
+    projectId: string,
+    actor: ActorContext,
+    filters: {
+      status?: string;
+      targetType?: string;
+      operation?: string;
+      limit?: string;
+      offset?: string;
+    } = {},
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.capabilities.assertCapabilities(actor, ["draft:review"]);
+
+    const limit = this.parsePageNumber(filters.limit, 50, 100);
+    const offset = this.parsePageNumber(
+      filters.offset,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const where: Prisma.DraftProposalWhereInput = {
+      projectId,
+      targetType: this.parseEnumFilter(
+        filters.targetType,
+        DraftTargetType,
+        DraftTargetType.ENTITY,
+      ),
+      operation: this.parseEnumFilter(
+        filters.operation,
+        DraftOperation,
+        DraftOperation.CREATE,
+      ),
+      status: this.parseEnumFilter(
+        filters.status,
+        DraftStatus,
+        DraftStatus.SUBMITTED,
+      ),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.draftProposal.findMany({
+        where,
+        orderBy: { createdAt: "asc" },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.draftProposal.count({ where }),
+    ]);
+
+    return {
+      items: items.map((draft) => this.toReviewSummary(draft)),
+      page: { limit, offset, total },
+    };
+  }
+
+  async getReviewQueueDetail(
+    projectId: string,
+    draftId: string,
+    actor: ActorContext,
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.capabilities.assertCapabilities(actor, [
+      "draft:review",
+      "audit:read_summary",
+    ]);
+
+    const draft = await this.prisma.draftProposal.findFirst({
+      where: {
+        id: draftId,
+        projectId,
+        targetType: "ENTITY",
+        operation: "CREATE",
+      },
+      include: {
+        auditEvents: { orderBy: { occurredAt: "asc" } },
+      },
+    });
+
+    if (!draft) {
+      throw new NotFoundException("Entity draft not found");
+    }
+
+    return {
+      ...this.toReviewSummary(draft),
+      batchId: draft.batchId,
+      proposed: this.toSafeProposedSummary(draft.proposedData),
+      reviewHistory: draft.auditEvents.map((event) => ({
+        id: event.id,
+        eventType: event.eventType,
+        actorKind: event.actorKind,
+        actorLabel: event.actorLabel,
+        sourceKind: event.sourceKind,
+        summary: event.summary,
+        occurredAt: event.occurredAt,
+      })),
+    };
   }
 
   async approveAndApplyEntityDraft(
@@ -333,6 +436,84 @@ export class EntityDraftsService {
       batchId: draft.batchId,
       canonical,
     };
+  }
+
+  private toReviewSummary(draft: {
+    id: string;
+    status: string;
+    targetType: string;
+    operation: string;
+    displayName: string;
+    displaySummary: string | null;
+    submittedByKind: string;
+    submittedByLabel: string;
+    sourceKind: string;
+    appliedTargetId: string | null;
+    appliedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: draft.id,
+      status: draft.status,
+      targetType: draft.targetType,
+      operation: draft.operation,
+      displayName: draft.displayName,
+      displaySummary: draft.displaySummary,
+      submittedByKind: draft.submittedByKind,
+      submittedByLabel: draft.submittedByLabel,
+      sourceKind: draft.sourceKind,
+      canonicalApplied: Boolean(draft.appliedTargetId || draft.appliedAt),
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+    };
+  }
+
+  private toSafeProposedSummary(value: Prisma.JsonValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("Entity draft payload is invalid");
+    }
+    const proposed = value as Record<string, Prisma.JsonValue>;
+    return {
+      type: proposed.type,
+      name: proposed.name,
+      slug: proposed.slug,
+      summary: proposed.summary,
+    };
+  }
+
+  private parsePageNumber(
+    value: string | undefined,
+    fallback: number,
+    max: number,
+  ) {
+    if (value === undefined) {
+      return fallback;
+    }
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(
+        "Pagination values must be non-negative integers",
+      );
+    }
+    return Math.min(parsed, max);
+  }
+
+  private parseEnumFilter<T extends string>(
+    value: string | undefined,
+    enumObject: Record<string, T>,
+    fallback: T,
+  ): T {
+    if (value === undefined) {
+      return fallback;
+    }
+    const normalized = value.toUpperCase();
+    const allowed = Object.values(enumObject);
+    const matched = allowed.find((candidate) => candidate === normalized);
+    if (!matched) {
+      throw new BadRequestException(`Unsupported filter value: ${value}`);
+    }
+    return matched;
   }
 
   private toSubmittedResponse(

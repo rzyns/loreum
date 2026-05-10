@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiCookieAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -26,6 +28,44 @@ export class EntityDraftsController {
     private entityDraftsService: EntityDraftsService,
   ) {}
 
+  @Get()
+  @ApiOperation({ summary: "List entity drafts waiting in the review queue" })
+  async list(
+    @Param("projectSlug") projectSlug: string,
+    @User() user: AuthUser,
+    @Query("status") status?: string,
+    @Query("targetType") targetType?: string,
+    @Query("operation") operation?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.listReviewQueue(project.id, actor, {
+      status,
+      targetType,
+      operation,
+      limit,
+      offset,
+    });
+  }
+
+  @Get(":draftId")
+  @ApiOperation({ summary: "Read a safe entity draft review detail" })
+  async detail(
+    @Param("projectSlug") projectSlug: string,
+    @Param("draftId") draftId: string,
+    @User() user: AuthUser,
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.getReviewQueueDetail(
+      project.id,
+      draftId,
+      actor,
+    );
+  }
+
   @Post()
   @ApiOperation({
     summary: "Submit a draft entity without applying canonically",
@@ -36,17 +76,7 @@ export class EntityDraftsController {
     @Body() dto: CreateEntityDto,
   ) {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
-    const actor = user.apiKey
-      ? this.capabilities.resolveApiKeyActor({
-          project,
-          apiKey: {
-            id: user.apiKey.id,
-            name: "project API key",
-            userId: user.id,
-            permissions: user.apiKey.permissions,
-          },
-        })
-      : this.capabilities.resolveHumanActor({ project, user });
+    const actor = this.resolveActor(project, user);
     return this.entityDraftsService.submitEntityDraft(project.id, dto, actor);
   }
 
@@ -60,17 +90,7 @@ export class EntityDraftsController {
     @Body() dto: { reviewNote?: string },
   ) {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
-    const actor = user.apiKey
-      ? this.capabilities.resolveApiKeyActor({
-          project,
-          apiKey: {
-            id: user.apiKey.id,
-            name: "project API key",
-            userId: user.id,
-            permissions: user.apiKey.permissions,
-          },
-        })
-      : this.capabilities.resolveHumanActor({ project, user });
+    const actor = this.resolveActor(project, user);
     return this.entityDraftsService.approveAndApplyEntityDraft(
       project.id,
       draftId,
@@ -89,7 +109,20 @@ export class EntityDraftsController {
     @Body() dto: { rejectionReason?: string },
   ) {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
-    const actor = user.apiKey
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.rejectEntityDraft(
+      project.id,
+      draftId,
+      actor,
+      dto,
+    );
+  }
+
+  private resolveActor(
+    project: Awaited<ReturnType<ProjectsService["findBySlug"]>>,
+    user: AuthUser,
+  ) {
+    return user.apiKey
       ? this.capabilities.resolveApiKeyActor({
           project,
           apiKey: {
@@ -100,11 +133,5 @@ export class EntityDraftsController {
           },
         })
       : this.capabilities.resolveHumanActor({ project, user });
-    return this.entityDraftsService.rejectEntityDraft(
-      project.id,
-      draftId,
-      actor,
-      dto,
-    );
   }
 }

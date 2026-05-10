@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from "@nestjs/common";
 import { Prisma } from "../../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { ActorContext } from "../auth/actor-context";
@@ -46,6 +50,69 @@ type AuditRecordInput = {
 @Injectable()
 export class AuditService {
   constructor(private prisma: PrismaService) {}
+
+  async listProjectActivity(
+    projectId: string,
+    actor: ActorContext,
+    filters: { limit?: string; offset?: string } = {},
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.capabilitiesAssert(actor, ["audit:read_summary"]);
+
+    const limit = this.parsePageNumber(filters.limit, 50, 100);
+    const offset = this.parsePageNumber(
+      filters.offset,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const where: Prisma.AuditEventWhereInput = { projectId };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.auditEvent.findMany({
+        where,
+        orderBy: { occurredAt: "desc" },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.auditEvent.count({ where }),
+    ]);
+
+    return {
+      items: items.map((event) => this.toActivitySummary(event)),
+      page: { limit, offset, total },
+    };
+  }
+
+  async getAuditDetail(
+    projectId: string,
+    auditEventId: string,
+    actor: ActorContext,
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.capabilitiesAssert(actor, ["audit:read_detail"]);
+
+    const event = await this.prisma.auditEvent.findFirst({
+      where: { id: auditEventId, projectId },
+    });
+    if (!event) {
+      return null;
+    }
+    return {
+      ...this.toActivitySummary(event),
+      oldData: redactInfrastructureSecrets(event.oldData),
+      newData: redactInfrastructureSecrets(event.newData),
+      diff: redactInfrastructureSecrets(event.diff),
+      metadata: redactInfrastructureSecrets(event.metadata),
+      capabilityContext: redactInfrastructureSecrets(event.capabilityContext),
+      requestId: event.requestId,
+      correlationId: event.correlationId,
+      causationId: event.causationId,
+      schemaVersion: event.schemaVersion,
+      streamKey: event.streamKey,
+      streamVersion: event.streamVersion,
+      committedAt: event.committedAt,
+    };
+  }
 
   async record(
     input: AuditRecordInput,
@@ -105,6 +172,131 @@ export class AuditService {
         streamVersion: input.streamVersion,
       },
     });
+  }
+
+  private assertProjectActor(projectId: string, actor: ActorContext) {
+    if (!actor.projectId || actor.projectId !== projectId) {
+      throw new BadRequestException(
+        "Audit operations require matching project actor context",
+      );
+    }
+  }
+
+  private capabilitiesAssert(actor: ActorContext, required: string[]) {
+    const missing = required.filter(
+      (capability) => !actor.capabilities.includes(capability),
+    );
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `Missing project capability: ${missing.join(", ")}`,
+      );
+    }
+  }
+
+  private parsePageNumber(
+    value: string | undefined,
+    fallback: number,
+    max: number,
+  ) {
+    if (value === undefined) {
+      return fallback;
+    }
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(
+        "Pagination values must be non-negative integers",
+      );
+    }
+    return Math.min(parsed, max);
+  }
+
+  private toActivitySummary(event: {
+    id: string;
+    eventType: string;
+    outcome: string;
+    actorKind: string;
+    actorLabel: string;
+    sourceKind: string;
+    operation: string | null;
+    targetType: string | null;
+    targetId: string | null;
+    targetModel: string | null;
+    targetDisplay: string | null;
+    draftId: string | null;
+    batchId: string | null;
+    approvalId: string | null;
+    occurredAt: Date;
+  }) {
+    const safeTarget = this.redactSummaryText(
+      event.targetDisplay ?? event.targetType?.toLowerCase() ?? "item",
+    );
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      outcome: event.outcome,
+      actorKind: event.actorKind,
+      actorLabel: this.redactSummaryText(event.actorLabel),
+      sourceKind: event.sourceKind,
+      operation: event.operation,
+      targetType: event.targetType,
+      targetId: event.targetId,
+      targetModel: event.targetModel,
+      targetDisplay: safeTarget,
+      draftId: event.draftId,
+      batchId: event.batchId,
+      approvalId: event.approvalId,
+      summary: this.safeSummaryFor(event, safeTarget),
+      occurredAt: event.occurredAt,
+    };
+  }
+
+  private safeSummaryFor(
+    event: {
+      eventType: string;
+      outcome: string;
+      actorKind: string;
+      targetType: string | null;
+    },
+    targetDisplay: string,
+  ) {
+    const actor = event.actorKind === "AGENT" ? "Agent" : "User";
+    const target = this.targetNoun(event.targetType);
+    if (event.outcome === "FAILURE") {
+      return `${actor} failed ${target} ${targetDisplay}`;
+    }
+    switch (event.eventType) {
+      case "DRAFT_ENTITY_SUBMITTED":
+        return `${actor} proposed ${target} ${targetDisplay}`;
+      case "DRAFT_ENTITY_APPLIED":
+        return `${actor} applied ${target} ${targetDisplay}`;
+      case "DRAFT_ENTITY_REJECTED":
+        return `${actor} rejected ${target} ${targetDisplay}`;
+      default:
+        return `${actor} changed ${target} ${targetDisplay}`;
+    }
+  }
+
+  private targetNoun(targetType: string | null) {
+    switch (targetType) {
+      case "ENTITY":
+        return "entity";
+      case "RELATIONSHIP":
+        return "relationship";
+      case "LORE_ARTICLE":
+        return "lore article";
+      case "TIMELINE_EVENT":
+        return "timeline event";
+      case "STORYBOARD_RECORD":
+        return "storyboard record";
+      case "PROJECT_METADATA":
+        return "project metadata";
+      default:
+        return "item";
+    }
+  }
+
+  private redactSummaryText(value: string) {
+    return redactInfrastructureSecrets(value);
   }
 
   private redactDomainPayload(value: unknown) {

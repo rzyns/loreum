@@ -48,7 +48,11 @@ describe("Entities (integration)", () => {
   const draftBase = () => `/v1/projects/${projectSlug}/drafts/entities`;
 
   async function createApiKey(
-    permissions: "DRAFT_WRITE" | "DRAFT_WRITE_SELF_APPROVE" | "CANONICAL_WRITE",
+    permissions:
+      | "READ_ONLY"
+      | "DRAFT_WRITE"
+      | "DRAFT_WRITE_SELF_APPROVE"
+      | "CANONICAL_WRITE",
   ) {
     const project = await prisma.project.findUniqueOrThrow({
       where: { slug: projectSlug },
@@ -105,6 +109,154 @@ describe("Entities (integration)", () => {
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
         .expect(404);
+    });
+
+    it("lists submitted reviewable drafts with safe summaries and status filters", async () => {
+      const first = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Reviewable Character",
+          summary: "Visible summary only",
+          description: "secret pending draft body",
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "Rejected Queue Location" })
+        .expect(201)
+        .then((submitted) =>
+          request(app.getHttpServer())
+            .post(`${draftBase()}/${submitted.body.draftId}/reject`)
+            .set("Cookie", authCookie)
+            .set("x-csrf-token", csrfToken)
+            .send({ rejectionReason: "not now" })
+            .expect(200),
+        );
+
+      const res = await request(app.getHttpServer())
+        .get(draftBase())
+        .query({ status: "SUBMITTED", limit: 10 })
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(res.body).toMatchObject({
+        items: [
+          {
+            id: first.body.draftId,
+            status: "SUBMITTED",
+            targetType: "ENTITY",
+            operation: "CREATE",
+            displayName: "Reviewable Character",
+            displaySummary: "Visible summary only",
+            submittedByKind: "HUMAN",
+            submittedByLabel: "test@example.com",
+            sourceKind: "MANUAL",
+            canonicalApplied: false,
+          },
+        ],
+        page: { limit: 10, offset: 0, total: 1 },
+      });
+      expect(JSON.stringify(res.body)).not.toContain(
+        "secret pending draft body",
+      );
+    });
+
+    it("reads draft detail with safe proposed payload summary and audit history", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Detailed Draft",
+          summary: "Draft detail summary",
+          description: "unsafe full body should not leak",
+          character: { species: "Maiar", role: "Reviewer target" },
+        })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body).toMatchObject({
+        id: submit.body.draftId,
+        batchId: submit.body.batchId,
+        status: "SUBMITTED",
+        targetType: "ENTITY",
+        operation: "CREATE",
+        displayName: "Detailed Draft",
+        displaySummary: "Draft detail summary",
+        submittedByKind: "HUMAN",
+        submittedByLabel: "test@example.com",
+        sourceKind: "MANUAL",
+        canonicalApplied: false,
+        proposed: {
+          type: "CHARACTER",
+          name: "Detailed Draft",
+          slug: "detailed-draft",
+          summary: "Draft detail summary",
+        },
+        reviewHistory: [
+          {
+            eventType: "DRAFT_ENTITY_SUBMITTED",
+            actorKind: "HUMAN",
+            actorLabel: "test@example.com",
+          },
+        ],
+      });
+      expect(detail.body.proposed).not.toHaveProperty("description");
+      expect(detail.body.proposed).not.toHaveProperty("character");
+      expect(JSON.stringify(detail.body)).not.toContain(
+        "unsafe full body should not leak",
+      );
+    });
+
+    it("prevents non-review API keys from reading the review queue", async () => {
+      const key = await createApiKey("DRAFT_WRITE");
+      await request(app.getHttpServer())
+        .get(draftBase())
+        .set("Authorization", `Bearer ${key.key}`)
+        .expect(403);
+    });
+
+    it("does not leak drafts across project scope", async () => {
+      const otherAuth = await createAuthenticatedUser(prisma, module, {
+        email: "other@example.com",
+      });
+      const otherProject = await request(app.getHttpServer())
+        .post("/v1/projects")
+        .set("Cookie", otherAuth.cookie)
+        .set("x-csrf-token", otherAuth.csrfToken)
+        .send({ name: "Other Review World" })
+        .expect(201);
+      const otherDraft = await request(app.getHttpServer())
+        .post(`/v1/projects/${otherProject.body.slug}/drafts/entities`)
+        .set("Cookie", otherAuth.cookie)
+        .set("x-csrf-token", otherAuth.csrfToken)
+        .send({ type: "CHARACTER", name: "Other Project Draft" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get(`${draftBase()}/${otherDraft.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(404);
+
+      const list = await request(app.getHttpServer())
+        .get(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(list.body.items).toEqual([]);
     });
 
     it("prevents DRAFT_WRITE API keys from approving submitted drafts", async () => {
@@ -267,6 +419,173 @@ describe("Entities (integration)", () => {
         },
       });
       expect(await prisma.entity.count()).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // ACTIVITY / AUDIT
+  // -------------------------------------------------------------------------
+
+  describe("GET /activity and /audit/:auditEventId", () => {
+    const activityBase = () => `/v1/projects/${projectSlug}/activity`;
+    const auditBase = () => `/v1/projects/${projectSlug}/audit`;
+
+    it("lists project activity from audit events with safe generated summaries", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Activity Character",
+          summary: "Public activity summary",
+          description:
+            "Bearer abcdefghijklmnopqrstuvwxyz123456 should not leak",
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "approve for activity" })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(activityBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(res.body.items).toEqual([
+        expect.objectContaining({
+          eventType: "DRAFT_ENTITY_APPLIED",
+          summary: "User applied entity Activity Character",
+          targetDisplay: "Activity Character",
+          actorKind: "HUMAN",
+        }),
+        expect.objectContaining({
+          eventType: "DRAFT_ENTITY_SUBMITTED",
+          summary: "User proposed entity Activity Character",
+          targetDisplay: "Activity Character",
+          actorKind: "HUMAN",
+        }),
+      ]);
+      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 2 });
+      expect(JSON.stringify(res.body)).not.toContain(
+        "abcdefghijklmnopqrstuvwxyz",
+      );
+      expect(JSON.stringify(res.body)).not.toContain("description");
+      expect(JSON.stringify(res.body)).not.toContain("newData");
+    });
+
+    it("returns redacted audit details only to actors with audit detail capability", async () => {
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      const event = await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_SUBMITTED",
+          actorKind: "AGENT",
+          actorApiKeyId: null,
+          actorLabel: "API key: detail test",
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          targetDisplay: "Secret-Bearing Entity",
+          summary:
+            "raw summary with lrm_abcdefghijklmnopqrstuvwxyz should be replaced",
+          newData: {
+            name: "Secret-Bearing Entity",
+            authorization: "Bearer abcdefghijklmnopqrstuvwxyz123456",
+            description: "domain prose is detail-only",
+          },
+          metadata: {
+            requestPayload: {
+              api_key: "lrm_abcdefghijklmnopqrstuvwxyz",
+            },
+          },
+          capabilityContext: {
+            token: "Bearer zyxwvutsrqponmlkjihgfedcba987654",
+            capabilities: ["draft:create"],
+          },
+        },
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${auditBase()}/${event.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body).toMatchObject({
+        id: event.id,
+        eventType: "DRAFT_ENTITY_SUBMITTED",
+        summary: "Agent proposed entity Secret-Bearing Entity",
+        targetDisplay: "Secret-Bearing Entity",
+        newData: {
+          name: "Secret-Bearing Entity",
+          authorization: "[REDACTED]",
+          description: "domain prose is detail-only",
+        },
+        metadata: {
+          requestPayload: {
+            api_key: "[REDACTED]",
+          },
+        },
+        capabilityContext: {
+          token: "[REDACTED]",
+          capabilities: ["draft:create"],
+        },
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(
+        "lrm_abcdefghijklmnopqrstuvwxyz",
+      );
+      expect(JSON.stringify(detail.body)).not.toContain(
+        "Bearer abcdefghijklmnopqrstuvwxyz",
+      );
+
+      const key = await createApiKey("DRAFT_WRITE");
+      await request(app.getHttpServer())
+        .get(`${auditBase()}/${event.id}`)
+        .set("Authorization", `Bearer ${key.key}`)
+        .expect(403);
+    });
+
+    it("does not expose audit feed or details across project scope", async () => {
+      const otherAuth = await createAuthenticatedUser(prisma, module, {
+        email: "activity-other@example.com",
+      });
+      const otherProject = await request(app.getHttpServer())
+        .post("/v1/projects")
+        .set("Cookie", otherAuth.cookie)
+        .set("x-csrf-token", otherAuth.csrfToken)
+        .send({ name: "Other Activity World" })
+        .expect(201);
+      const otherSubmit = await request(app.getHttpServer())
+        .post(`/v1/projects/${otherProject.body.slug}/drafts/entities`)
+        .set("Cookie", otherAuth.cookie)
+        .set("x-csrf-token", otherAuth.csrfToken)
+        .send({ type: "CHARACTER", name: "Other Activity Draft" })
+        .expect(201);
+      const otherEvent = await prisma.auditEvent.findFirstOrThrow({
+        where: { draftId: otherSubmit.body.draftId },
+      });
+
+      const feed = await request(app.getHttpServer())
+        .get(activityBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(feed.body.items).toEqual([]);
+
+      await request(app.getHttpServer())
+        .get(`${auditBase()}/${otherEvent.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(404);
     });
   });
 
