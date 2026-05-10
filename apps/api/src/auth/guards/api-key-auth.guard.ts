@@ -65,12 +65,13 @@ export class ApiKeyAuthGuard extends AuthGuard("jwt") implements CanActivate {
 
     const permission = user.apiKey?.permissions;
     const isDraftMutation = /\/drafts(?:\/|$)/.test(request.path);
+    const hasCanonicalWrite =
+      permission === "CANONICAL_WRITE" ||
+      permission === "READ_WRITE" ||
+      permission === "DRAFT_WRITE_SELF_APPROVE";
     const canMutate = isDraftMutation
-      ? permission === "DRAFT_WRITE" ||
-        permission === "DRAFT_WRITE_SELF_APPROVE" ||
-        permission === "CANONICAL_WRITE" ||
-        permission === "READ_WRITE"
-      : permission === "CANONICAL_WRITE" || permission === "READ_WRITE";
+      ? permission === "DRAFT_WRITE" || hasCanonicalWrite
+      : hasCanonicalWrite;
 
     if (!canMutate) {
       throw new ForbiddenException(

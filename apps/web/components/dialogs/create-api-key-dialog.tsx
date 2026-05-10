@@ -21,6 +21,20 @@ import {
   SelectValue,
 } from "@loreum/ui/select";
 
+type ApiKeyPermission =
+  | "READ_ONLY"
+  | "DRAFT_WRITE"
+  | "CANONICAL_WRITE"
+  | "READ_WRITE"
+  | "DRAFT_WRITE_SELF_APPROVE";
+
+type CreateApiKeyPermission = Extract<
+  ApiKeyPermission,
+  "READ_ONLY" | "DRAFT_WRITE" | "CANONICAL_WRITE"
+>;
+
+const DEFAULT_API_KEY_PERMISSION: CreateApiKeyPermission = "DRAFT_WRITE";
+
 interface CreateApiKeyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -28,7 +42,7 @@ interface CreateApiKeyDialogProps {
   onCreated: (key: {
     id: string;
     name: string;
-    permissions: "READ_ONLY" | "READ_WRITE";
+    permissions: ApiKeyPermission;
     lastUsedAt: null;
     expiresAt: string | null;
     createdAt: string;
@@ -43,8 +57,8 @@ export function CreateApiKeyDialog({
   onCreated,
 }: CreateApiKeyDialogProps) {
   const [name, setName] = useState("");
-  const [permissions, setPermissions] = useState<"READ_ONLY" | "READ_WRITE">(
-    "READ_WRITE",
+  const [permissions, setPermissions] = useState<CreateApiKeyPermission>(
+    DEFAULT_API_KEY_PERMISSION,
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +74,7 @@ export function CreateApiKeyDialog({
       const result = await api<{
         id: string;
         name: string;
-        permissions: "READ_ONLY" | "READ_WRITE";
+        permissions: ApiKeyPermission;
         expiresAt: string | null;
         createdAt: string;
         key: string;
@@ -72,7 +86,7 @@ export function CreateApiKeyDialog({
         }),
       });
       setName("");
-      setPermissions("READ_WRITE");
+      setPermissions(DEFAULT_API_KEY_PERMISSION);
       onCreated({ ...result, lastUsedAt: null });
     } catch {
       setError("Failed to create API key");
@@ -108,15 +122,20 @@ export function CreateApiKeyDialog({
               <Select
                 value={permissions}
                 onValueChange={(v) =>
-                  setPermissions(v as "READ_ONLY" | "READ_WRITE")
+                  setPermissions(v as CreateApiKeyPermission)
                 }
               >
                 <SelectTrigger id="key-permissions">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="READ_WRITE">Read & Write</SelectItem>
                   <SelectItem value="READ_ONLY">Read Only</SelectItem>
+                  <SelectItem value="DRAFT_WRITE">
+                    Draft / Proposal Write
+                  </SelectItem>
+                  <SelectItem value="CANONICAL_WRITE">
+                    Canonical Write
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

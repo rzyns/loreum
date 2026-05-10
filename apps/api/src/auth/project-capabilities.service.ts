@@ -21,6 +21,9 @@ export const OWNER_CAPABILITIES = [
 const READ_ONLY_API_KEY_CAPABILITIES = [
   "project:read",
   "canonical:read",
+  "draft:review",
+  "audit:read_summary",
+  "audit:read_detail",
 ] as const;
 
 const DRAFT_WRITE_API_KEY_CAPABILITIES = [
@@ -29,18 +32,14 @@ const DRAFT_WRITE_API_KEY_CAPABILITIES = [
   "draft:submit",
 ] as const;
 
-const DRAFT_WRITE_SELF_APPROVE_API_KEY_CAPABILITIES = [
+const CANONICAL_WRITE_API_KEY_CAPABILITIES = [
   ...DRAFT_WRITE_API_KEY_CAPABILITIES,
-  "draft:approve",
-  "draft:self_approve",
-  "canonical:apply_draft",
-] as const;
-
-const LEGACY_READ_WRITE_API_KEY_CAPABILITIES = [
-  ...DRAFT_WRITE_SELF_APPROVE_API_KEY_CAPABILITIES,
   "canonical:create",
   "canonical:update",
   "canonical:delete",
+  "draft:approve",
+  "draft:self_approve",
+  "canonical:apply_draft",
 ] as const;
 
 type ProjectRef = { id: string; slug: string; ownerId: string };
@@ -106,10 +105,12 @@ export class ProjectCapabilitiesService {
       case "DRAFT_WRITE":
         return [...DRAFT_WRITE_API_KEY_CAPABILITIES];
       case "DRAFT_WRITE_SELF_APPROVE":
-        return [...DRAFT_WRITE_SELF_APPROVE_API_KEY_CAPABILITIES];
+        // Deprecated compatibility row value: treat as canonical-write rather
+        // than preserving a separate first-class product permission mode.
+        return [...CANONICAL_WRITE_API_KEY_CAPABILITIES];
       case "CANONICAL_WRITE":
       case "READ_WRITE":
-        return [...LEGACY_READ_WRITE_API_KEY_CAPABILITIES];
+        return [...CANONICAL_WRITE_API_KEY_CAPABILITIES];
     }
   }
 
