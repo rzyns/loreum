@@ -27,7 +27,7 @@ The MCP server (`apps/mcp/src/index.ts`, with tool registration in `apps/mcp/src
 - 1 resource: `project_overview`
 - A simple `api()` helper that throws on HTTP errors
 - Auth via `MCP_API_TOKEN` env var (API key with `lrm_` prefix, Bearer token)
-- API key system with generate/list/revoke, project-scoped permissions (READ_ONLY / READ_WRITE)
+- API key system with generate/list/revoke, project-scoped target permissions (`READ_ONLY`, `DRAFT_WRITE`, `CANONICAL_WRITE`), with `READ_WRITE` retained only as a legacy compatibility alias for `CANONICAL_WRITE`
 
 ### Read expansion note (2026-04-29)
 

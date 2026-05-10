@@ -31,7 +31,7 @@ Relevant current code:
   - `Entity` and extension tables (`Character`, `Location`, `Organization`, `Item`) are canonical records.
   - `LoreArticle` now has `canonStatus LoreArticleCanonStatus @default(provisional)` for content canon/publication state. Do not conflate this with operational draft/proposal review states.
   - Existing MCP/review queue primitives are `ApiKey`, `PendingChange`, `ChangeOperation`, and `ChangeStatus`.
-  - `ApiKeyPermission` is currently binary: `READ_ONLY | READ_WRITE`.
+  - `ApiKeyPermission` is currently in transition: historical rows/clients may still use `READ_ONLY | READ_WRITE`, while the Phase-2 target model is `READ_ONLY | DRAFT_WRITE | CANONICAL_WRITE` with `READ_WRITE` retained only as a legacy compatibility alias for `CANONICAL_WRITE`.
 - API entity write path:
   - `apps/api/src/entities/entities.controller.ts` `POST /v1/projects/:projectSlug/entities` calls `EntitiesService.create(...)` directly.
   - `apps/api/src/entities/entities.service.ts` `create(...)` inserts into canonical `entity` and extension tables immediately.
@@ -39,7 +39,7 @@ Relevant current code:
   - `apps/mcp/src/tools.ts` registers `create_entity` when write tools are enabled.
   - `create_entity` currently POSTs to `/projects/:projectSlug/entities` and returns the API response, so a write-enabled MCP call is canonical today.
 - Auth/API key path:
-  - `apps/api/src/auth/guards/api-key-auth.guard.ts` validates project scope and blocks mutations unless API key permission is `READ_WRITE`.
+  - `apps/api/src/auth/guards/api-key-auth.guard.ts` validates project scope. Historical write checks are based on `READ_WRITE`; Phase-2 authorization must resolve `READ_WRITE` as a legacy alias for `CANONICAL_WRITE` while treating `DRAFT_WRITE` as draft/proposal submission only.
   - API-key-authenticated requests are represented in `AuthUser.apiKey`, but the API key mode is not expressive enough for draft-write vs canonical-write.
 - Existing tests:
   - `apps/api/src/entities/entities.spec.ts` asserts canonical creation on POST.
@@ -142,16 +142,22 @@ enum AuditOutcome {
 enum ApiKeyPermission {
   READ_ONLY
   DRAFT_WRITE
-  DRAFT_WRITE_SELF_APPROVE
   CANONICAL_WRITE
+
+  // Legacy compatibility only. Do not expose as a new-key product option.
+  READ_WRITE
 }
 ```
 
-Migration note: replace the current `READ_WRITE` default with `DRAFT_WRITE` for agent-safe write behavior. If compatibility is needed, migrate existing `READ_WRITE` keys according to deployment policy:
+Target semantics:
 
-- Conservative default: `READ_WRITE -> DRAFT_WRITE`.
-- Only manually reviewed/internal keys should ever become `CANONICAL_WRITE`.
-- Existing remote resting state should remain read-only unless Janusz explicitly approves otherwise.
+- `READ_ONLY`: broad project-scoped data-plane reads, including canonical/project data, draft/review queue reads, and audit/activity reads for the key's project; no writes.
+- `DRAFT_WRITE`: all `READ_ONLY` reads plus draft/proposal create/submit; no canonical writes and no draft approve/apply.
+- `CANONICAL_WRITE`: all `DRAFT_WRITE` behavior plus direct canonical writes and draft approve/apply, including self-authored/self-submitted drafts.
+- `READ_WRITE`: legacy compatibility alias for `CANONICAL_WRITE` while old rows, generated types, tests, and clients migrate.
+- `DRAFT_WRITE_SELF_APPROVE`: deprecated/removed from the conceptual model. If a deployed DB enum still contains it, retain only staged compatibility mapping and do not expose it as a first-class product/API/UI mode.
+
+Migration note: do not silently downgrade existing `READ_WRITE` keys to draft-only. Treat `READ_WRITE` as compatibility spelling for `CANONICAL_WRITE` until a dedicated migration/review process can rewrite rows and clients. Existing remote resting state should remain read-only unless Janusz explicitly approves otherwise.
 
 ### 4.2 Project capability model
 
@@ -391,10 +397,11 @@ Responsibilities:
 Initial mapping:
 
 - Project owner human: all first-slice capabilities, including `draft:self_approve` and `canonical:apply_draft`.
-- API key `READ_ONLY`: `project:read`, `canonical:read` only.
-- API key `DRAFT_WRITE`: `project:read`, `canonical:read`, `draft:create`, `draft:submit`.
-- API key `DRAFT_WRITE_SELF_APPROVE`: same as `DRAFT_WRITE` plus `draft:approve`, `draft:self_approve`, `canonical:apply_draft`. This mode should not be used remotely without explicit approval.
-- API key `CANONICAL_WRITE`: future/high-risk compatibility path; do not use in Phase 2 unless explicitly approved.
+- API key `READ_ONLY`: broad project-scoped reads: `project:read`, `canonical:read`, `draft:review`, `audit:read_summary`, and `audit:read_detail` for the key's project only; no writes.
+- API key `DRAFT_WRITE`: all `READ_ONLY` capabilities plus `draft:create` and `draft:submit`; no approval/application.
+- API key `CANONICAL_WRITE`: all `DRAFT_WRITE` capabilities plus direct canonical writes and draft approval/application, including self-authored drafts where the implementation uses `draft:self_approve`.
+- API key `READ_WRITE`: legacy compatibility alias that resolves to `CANONICAL_WRITE`; accept for old rows/clients but do not recommend for new keys.
+- API key `DRAFT_WRITE_SELF_APPROVE`: deprecated compatibility only if a deployed schema still contains it; map deliberately and do not expose as a first-class mode.
 
 ### 5.3 AuditService
 
@@ -419,7 +426,7 @@ Redaction must cover at minimum:
 - bearer-looking strings
 - Loreum raw API keys beginning with `lrm_`
 
-Important distinction: the entity DTO field named `secrets` is user lore content, not infrastructure credentials. It may be stored in `proposedData`, but detailed audit reads must remain capability-gated. Redaction should target infrastructure credential keys/patterns, not blindly delete all fictional lore content named `secrets` unless the display/audit-summary view cannot safely show it.
+Important distinction: the entity DTO field named `secrets` is user lore content, not infrastructure credentials. It may be stored in `proposedData`, but detailed audit reads must remain capability-gated. Redaction should target infrastructure credential keys/patterns, not blindly delete fictional lore content named `secrets` unless the display/audit-summary view cannot safely show it. Loreum is not taking on CMS-level DLP/global canonical redaction in this batch; operational audit/review hygiene must not become a product promise to scan or redact canonical domain content.
 
 ### 5.4 DraftsService
 
@@ -591,7 +598,7 @@ Owner memberships:
 API keys:
 
 - `READ_ONLY` stays `READ_ONLY`.
-- Existing `READ_WRITE` should become `DRAFT_WRITE` in the conservative default migration.
+- Existing `READ_WRITE` should remain accepted as a legacy compatibility alias for `CANONICAL_WRITE` until a dedicated row/client migration is approved.
 - If Prisma enum migration requires staged changes, use a temporary SQL cast or add new enum values before dropping/renaming old values.
 
 Pending changes:
@@ -653,7 +660,7 @@ Suggested first failing integration tests:
    - `AuditEvent` includes `draft.submitted`.
 2. Approval path:
    - Approval by API key with `DRAFT_WRITE` fails.
-   - Self-approval by API key without `DRAFT_WRITE_SELF_APPROVE` fails.
+   - Approval by API key without `CANONICAL_WRITE` fails; `CANONICAL_WRITE` includes approval/application of self-authored drafts, while `DRAFT_WRITE_SELF_APPROVE` is not a target conceptual prerequisite.
    - Approval by project owner applies canonical entity and records `draft.approved`, `canonical.created`, `draft.applied`.
    - After approval, canonical reads include the entity.
 3. Project scope:
@@ -719,7 +726,7 @@ Current card is valid but should be interpreted concretely as:
 
 Current card is valid. Add these checks explicitly during integration:
 
-- Inspect generated Prisma enum migration for `READ_WRITE -> DRAFT_WRITE` behavior.
+- Inspect generated Prisma enum migration for compatibility behavior: `READ_WRITE` must alias `CANONICAL_WRITE`, and any retained `DRAFT_WRITE_SELF_APPROVE` value must be staged/deprecated rather than product-facing.
 - Ensure old `PendingChange` references are either untouched/deprecated or deliberately migrated; do not leave two active review queues with conflicting semantics.
 - Confirm MCP read-only mode still omits write/draft tools.
 - Run changed-file secret-like scan and record that no raw tokens/API keys were printed.
@@ -750,7 +757,7 @@ Recommendation: named API key modes in Phase 2, project membership capabilities 
 
 Why:
 
-- API key UX benefits from simple modes: read-only, draft-write, self-approve, canonical-write.
+- API key UX benefits from simple modes: read-only, draft-write, canonical-write, plus explicit legacy labels for old compatibility values.
 - Human collaboration roles need flexible capabilities long term.
 
 Risk:

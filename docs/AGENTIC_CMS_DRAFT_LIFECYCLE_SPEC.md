@@ -392,12 +392,12 @@ For MCP/API keys, avoid a binary read-only/read-write product story. Draft-first
 
 Recommended modes:
 
-- `READ_ONLY`: can read allowed canonical project data; cannot create drafts.
-- `DRAFT_WRITE`: can read allowed canonical data and submit drafts; cannot approve/apply them.
-- `DRAFT_WRITE_SELF_APPROVE`: can submit and approve/apply its own drafts only if project policy allows trusted agents.
-- `CANONICAL_WRITE`: future/exceptional direct mutation mode; should be disabled by default and require explicit security review.
+- `READ_ONLY`: broad project-scoped data-plane reads for the key's project, including canonical/project data, draft/review queue reads, and audit/activity reads; cannot create drafts or mutate canon.
+- `DRAFT_WRITE`: inherits `READ_ONLY` and can submit draft/proposal records; cannot approve/apply drafts, including its own.
+- `CANONICAL_WRITE`: inherits `DRAFT_WRITE` and may directly mutate canon and approve/apply drafts, including self-authored/self-submitted drafts when self-approval capability checks apply.
+- `READ_WRITE`: legacy compatibility alias for `CANONICAL_WRITE`; keep only for old rows/clients while migration proceeds.
 
-Initial MCP write enablement should target `DRAFT_WRITE`, not `CANONICAL_WRITE`.
+`DRAFT_WRITE_SELF_APPROVE` is deprecated/removed from the target conceptual model. If a deployed schema still contains it, keep it only as staged compatibility and do not present it as a first-class API/UI/product option. Initial MCP write enablement should target `DRAFT_WRITE`, not `CANONICAL_WRITE`.
 
 ## 9. Audit and changelog semantics
 
@@ -449,7 +449,7 @@ Each audit event should include:
 Secrets policy:
 
 - Do not log bearer tokens, API key plaintext, OAuth tokens, raw stack env, or other credentials.
-- The `secrets` lore field is user content, not infrastructure secret material, but it is sensitive for public wiki exposure. Audit detail should respect project permissions.
+- The `secrets` lore field is user content, not infrastructure secret material, but it is sensitive for public wiki exposure. Audit detail should respect project permissions. This batch does not create a CMS-level DLP/global canonical redaction requirement; keep operational credential redaction and review/audit hygiene separate from canonical domain content policy.
 
 ### 9.3 Changelog vs audit log
 
@@ -628,7 +628,7 @@ A product/domain design satisfies this spec when:
 4. Project-scoped roles/capabilities are defined at product level and include agent/API-key cases.
 5. Actor/source vocabulary separates `human`, `agent`, `imported`, `generated`, and `system` concepts without overloading in-world lore provenance.
 6. In-world provenance remains a separate lore-domain concept.
-7. Audit/changelog requirements include append-only events, safe actor/source metadata, review events, application events, and secret redaction.
+7. Audit/changelog requirements include append-only events, safe actor/source metadata, review events, application events, and operational credential redaction without implying CMS-level DLP or global canonical content scanning.
 8. UI implications include review queue list/detail/batch flows and canonical-page pending suggestion affordances.
 9. API/MCP implications clearly distinguish staged draft responses from canonical creation/update responses.
 10. First implementation slice can be tested locally without pushing, deploying, enabling remote MCP writes, or calling remote mutating MCP tools.
@@ -678,8 +678,8 @@ Minimum tests should prove:
 6. How much draft history is retained for edited proposals: mutable proposal payload with audit trail, or immutable proposal revisions?
 7. What is the minimum UI needed for the first slice: API-only approval, basic admin review page, or full review queue?
 8. Should rejected/withdrawn drafts be restorable/reopenable, or should a new draft always be created?
-9. How should pending drafts interact with public wiki visibility and “secrets” fields in review previews?
-10. Confirm the technical-design recommendation that API keys use named modes (`READ_ONLY`, `DRAFT_WRITE`, `DRAFT_WRITE_SELF_APPROVE`, exceptional `CANONICAL_WRITE`) in Phase 2, while human/project roles resolve to granular capability arrays.
+9. Pending drafts stay non-public until applied; review previews and public wiki visibility should respect project permissions and public-field policy without adding CMS-level DLP/global canonical redaction in this batch.
+10. Settled Phase-2 API-key modes are `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; `READ_WRITE` is a legacy alias for `CANONICAL_WRITE`, and `DRAFT_WRITE_SELF_APPROVE` is deprecated/compatibility-only if retained in schema.
 11. What rate limits or batch limits should prevent an agent from flooding the review queue?
 12. Should draft previews be queryable by agents with review capability, or only visible to humans in web UI initially?
 13. Should audit detail be a Pro/collaboration feature while minimal security audit remains available for all projects?
