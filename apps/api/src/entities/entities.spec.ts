@@ -352,6 +352,88 @@ describe("Entities (integration)", () => {
       }
     });
 
+    it("redacts infrastructure-keyed values from nested proposed draft detail", async () => {
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      const rawOpaqueSecret = "opaque-value-that-would-not-match-token-regex";
+      const rawSlugSecret = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const draft = await prisma.draftProposal.create({
+        data: {
+          projectId: project.id,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: "SUBMITTED",
+          proposedData: {
+            type: "CHARACTER",
+            name: "Nested Secret Draft",
+            slug: `nested-${rawSlugSecret}`,
+            summary: "Nested secret summary",
+            character: {
+              species: "Human",
+              role: "Scout",
+              token: rawOpaqueSecret,
+              api_key: rawOpaqueSecret,
+            },
+          },
+          displayName: "Nested Secret Draft",
+          displaySummary: "Nested secret summary",
+          submittedByKind: "HUMAN",
+          submittedByUserId: ownerId,
+          submittedByLabel: "User: nested detail reviewer",
+          sourceKind: "MANUAL",
+        },
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${draft.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body.proposed.content.character).toMatchObject({
+        species: "Human",
+        role: "Scout",
+        token: "[REDACTED]",
+        api_key: "[REDACTED]",
+      });
+      expect(detail.body.safeLinks).toMatchObject({
+        proposedCanonical: null,
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(rawOpaqueSecret);
+      expect(JSON.stringify(detail.body)).not.toContain(rawSlugSecret);
+
+      const unsafeSlugDraft = await prisma.draftProposal.create({
+        data: {
+          projectId: project.id,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: "SUBMITTED",
+          proposedData: {
+            type: "CHARACTER",
+            name: "Unsafe Link Draft",
+            slug: "unsafe/../entity?token=plain-value",
+            summary: "Unsafe link summary",
+          },
+          displayName: "Unsafe Link Draft",
+          displaySummary: "Unsafe link summary",
+          submittedByKind: "HUMAN",
+          submittedByUserId: ownerId,
+          submittedByLabel: "User: unsafe link reviewer",
+          sourceKind: "MANUAL",
+        },
+      });
+      const unsafeSlugDetail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${unsafeSlugDraft.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unsafeSlugDetail.body.safeLinks).toMatchObject({
+        proposedCanonical: null,
+      });
+    });
+
     it("redacts secret and PII patterns from draft detail review history", async () => {
       const secretDraftName =
         "Boundary lrm_live_abcdefghijklmnopqrstuvwxyz012345";
@@ -762,6 +844,20 @@ describe("Entities (integration)", () => {
           summary: "Internal failure should be replaced in activity",
         },
       });
+      await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_SUBMIT_FAILED",
+          outcome: "FAILURE",
+          actorKind: "AGENT",
+          actorLabel: "API key: failed submit worker",
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          targetDisplay: "Failed Submit Entity",
+          summary: "Internal submit failure should be replaced in activity",
+        },
+      });
 
       const res = await request(app.getHttpServer())
         .get(activityBase())
@@ -775,6 +871,12 @@ describe("Entities (integration)", () => {
             eventType: "DRAFT_ENTITY_APPLY_FAILED",
             summary: "Actor failed to apply entity Failed Activity Entity",
             targetDisplay: "Failed Activity Entity",
+            actorKind: "AGENT",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_SUBMIT_FAILED",
+            summary: "Actor failed to propose entity Failed Submit Entity",
+            targetDisplay: "Failed Submit Entity",
             actorKind: "AGENT",
           }),
           expect.objectContaining({
@@ -797,7 +899,7 @@ describe("Entities (integration)", () => {
           }),
         ]),
       );
-      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 5 });
+      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 6 });
       expect(JSON.stringify(res.body.items)).not.toContain("User ");
       expect(JSON.stringify(res.body.items)).not.toContain("Agent ");
       expect(JSON.stringify(res.body)).not.toContain(
