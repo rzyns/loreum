@@ -191,6 +191,11 @@ export class EntityDraftsService {
         actorLabel: redactInfrastructureSecrets(event.actorLabel),
         sourceKind: event.sourceKind,
         summary: redactInfrastructureSecrets(event.summary),
+        reviewNote: this.getAuditMetadataString(event.metadata, "reviewNote"),
+        rejectionReason: this.getAuditMetadataString(
+          event.metadata,
+          "rejectionReason",
+        ),
         occurredAt: event.occurredAt,
       })),
     };
@@ -276,6 +281,7 @@ export class EntityDraftsService {
             approvalId: applied.id,
             summary: `Applied entity draft ${canonical.name}`,
             newData: canonical,
+            metadata: { reviewNote: input?.reviewNote ?? null },
           },
           { client: tx },
         );
@@ -290,6 +296,7 @@ export class EntityDraftsService {
       draftId: applied.id,
       batchId: applied.batchId,
       canonical,
+      reviewNote: applied.reviewNote,
     };
   }
 
@@ -434,6 +441,7 @@ export class EntityDraftsService {
     id: string;
     batchId: string;
     appliedTargetId: string | null;
+    reviewNote?: string | null;
   }) {
     if (!draft.appliedTargetId) {
       throw new BadRequestException("Entity draft is missing applied target");
@@ -450,6 +458,7 @@ export class EntityDraftsService {
       draftId: draft.id,
       batchId: draft.batchId,
       canonical,
+      reviewNote: draft.reviewNote ?? null,
     };
   }
 
@@ -465,6 +474,8 @@ export class EntityDraftsService {
     sourceKind: string;
     appliedTargetId: string | null;
     appliedAt: Date | null;
+    reviewNote?: string | null;
+    rejectionReason?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -479,9 +490,22 @@ export class EntityDraftsService {
       submittedByLabel: this.redactSafeText(draft.submittedByLabel),
       sourceKind: draft.sourceKind,
       canonicalApplied: Boolean(draft.appliedTargetId || draft.appliedAt),
+      reviewNote: draft.reviewNote ?? null,
+      rejectionReason: draft.rejectionReason ?? null,
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
     };
+  }
+
+  private getAuditMetadataString(
+    metadata: Prisma.JsonValue,
+    key: "reviewNote" | "rejectionReason",
+  ): string | null {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return null;
+    }
+    const value = (metadata as Record<string, Prisma.JsonValue>)[key];
+    return typeof value === "string" ? value : null;
   }
 
   private toSafeProposedSummary(value: Prisma.JsonValue) {

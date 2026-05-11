@@ -633,7 +633,7 @@ describe("Entities (integration)", () => {
       },
     );
 
-    it("lets an authorized owner approve, apply, and audit an entity draft", async () => {
+    it("lets an authorized owner approve, apply, and audit an entity draft with durable rationale", async () => {
       const submit = await request(app.getHttpServer())
         .post(draftBase())
         .set("Cookie", authCookie)
@@ -652,6 +652,7 @@ describe("Entities (integration)", () => {
         status: "applied",
         canonicalApplied: true,
         draftId: submit.body.draftId,
+        reviewNote: "approved for canon",
         canonical: {
           type: "LOCATION",
           name: "Staged Valley",
@@ -680,9 +681,33 @@ describe("Entities (integration)", () => {
         "DRAFT_ENTITY_SUBMITTED",
         "DRAFT_ENTITY_APPLIED",
       ]);
+      expect(auditEvents).toHaveLength(2);
+      expect(auditEvents[1]!.metadata).toMatchObject({
+        reviewNote: "approved for canon",
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(detail.body).toMatchObject({
+        status: "APPLIED",
+        reviewNote: "approved for canon",
+        rejectionReason: null,
+      });
+      expect(detail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_APPLIED",
+            reviewNote: "approved for canon",
+            rejectionReason: null,
+          }),
+        ]),
+      );
     });
 
-    it("lets an authorized owner reject an entity draft without applying it canonically", async () => {
+    it("lets an authorized owner reject an entity draft without applying it canonically and persists rationale", async () => {
       const beforeCount = await prisma.entity.count();
       const submit = await request(app.getHttpServer())
         .post(draftBase())
@@ -713,6 +738,86 @@ describe("Entities (integration)", () => {
         "DRAFT_ENTITY_SUBMITTED",
         "DRAFT_ENTITY_REJECTED",
       ]);
+      expect(auditEvents).toHaveLength(2);
+      expect(auditEvents[1]!.metadata).toMatchObject({
+        rejectionReason: "needs more lore",
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(detail.body).toMatchObject({
+        status: "REJECTED",
+        reviewNote: null,
+        rejectionReason: "needs more lore",
+      });
+      expect(detail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_REJECTED",
+            reviewNote: null,
+            rejectionReason: "needs more lore",
+          }),
+        ]),
+      );
+    });
+
+    it("represents absent approval and rejection rationale as null", async () => {
+      const approved = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "No Note Applied Location" })
+        .expect(201);
+
+      const applyResponse = await request(app.getHttpServer())
+        .post(`${draftBase()}/${approved.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({})
+        .expect(200);
+      expect(applyResponse.body).toMatchObject({
+        status: "applied",
+        reviewNote: null,
+      });
+
+      const rejected = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "No Reason Rejected Character" })
+        .expect(201);
+
+      const rejectResponse = await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({})
+        .expect(200);
+      expect(rejectResponse.body).toMatchObject({
+        status: "rejected",
+        rejectionReason: null,
+      });
+
+      for (const draftId of [approved.body.draftId, rejected.body.draftId]) {
+        const detail = await request(app.getHttpServer())
+          .get(`${draftBase()}/${draftId}`)
+          .set("Cookie", authCookie)
+          .set("x-csrf-token", csrfToken)
+          .expect(200);
+        expect(detail.body.reviewNote).toBeNull();
+        expect(detail.body.rejectionReason).toBeNull();
+        expect(detail.body.reviewHistory).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              reviewNote: null,
+              rejectionReason: null,
+            }),
+          ]),
+        );
+      }
     });
     it("prevents rejection after a draft has already been applied", async () => {
       const submit = await request(app.getHttpServer())
