@@ -93,6 +93,21 @@ test("review queue action result remains visible after list refresh clears detai
   assert.match(page, /setActionResult\(result\)/);
   assert.match(page, /setDetail\(null\)/);
   assert.match(page, /Draft rejected without changing canonical content/);
+  assert.match(page, /Recorded approval note/);
+  assert.match(page, /Recorded rejection reason/);
+});
+
+test("review queue surfaces durable reviewer rationale and explicit absence", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(page, /reviewNote\?: string \| null/);
+  assert.match(page, /rejectionReason\?: string \| null/);
+  assert.match(page, /Recorded reviewer rationale/);
+  assert.match(page, /No reviewer rationale is recorded for this draft/);
+  assert.match(page, /No rationale recorded on this history event/);
+  assert.match(page, /No reviewer rationale was recorded for this action/);
+  assert.match(page, /reviewNote: reviewNote\.trim\(\) \|\| undefined/);
+  assert.match(page, /rejectionReason: rejectionReason\.trim\(\) \|\| undefined/);
 });
 
 test("project navigation exposes review queue and activity entries", async () => {
@@ -122,6 +137,9 @@ test("activity page consumes safe audit summaries and gates audit detail access"
   assert.match(page, /View audit detail/);
   assert.match(page, /Audit detail is restricted/);
   assert.match(page, /safe changelog summary remains visible/i);
+  assert.match(page, /Reviewer rationale/);
+  assert.match(page, /metadataStringValue\(detail\.metadata, "reviewNote"\)/);
+  assert.match(page, /No reviewer rationale is recorded for this audit event/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);
 });
 

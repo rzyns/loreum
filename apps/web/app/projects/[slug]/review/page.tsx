@@ -58,6 +58,8 @@ interface ReviewQueueSummary {
   submittedByLabel: string;
   sourceKind: string;
   canonicalApplied: boolean;
+  reviewNote?: string | null;
+  rejectionReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +76,8 @@ interface ReviewHistoryEvent {
   actorLabel: string;
   sourceKind: string;
   summary: string;
+  reviewNote?: string | null;
+  rejectionReason?: string | null;
   occurredAt: string;
 }
 
@@ -102,6 +106,7 @@ interface ActionResult {
   draftId: string;
   batchId: string;
   canonical?: { id: string; slug: string; name: string };
+  reviewNote?: string | null;
   rejectionReason?: string | null;
 }
 
@@ -298,11 +303,20 @@ export default function ReviewQueuePage() {
       {actionResult ? (
         <section
           role="status"
-          className="rounded-lg border border-green-600/30 bg-green-600/10 p-4 text-sm"
+          className="space-y-3 rounded-lg border border-green-600/30 bg-green-600/10 p-4 text-sm"
         >
-          {actionResult.canonicalApplied
-            ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
-            : "Draft rejected without changing canonical content."}
+          <p>
+            {actionResult.canonicalApplied
+              ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
+              : "Draft rejected without changing canonical content."}
+          </p>
+          <RationaleList
+            items={[
+              ["Recorded approval note", actionResult.reviewNote],
+              ["Recorded rejection reason", actionResult.rejectionReason],
+            ]}
+            emptyLabel="No reviewer rationale was recorded for this action."
+          />
         </section>
       ) : null}
 
@@ -425,6 +439,19 @@ export default function ReviewQueuePage() {
                   />
                 </section>
 
+                <section className="space-y-2 rounded-lg border bg-muted/30 p-4 text-sm">
+                  <h2 className="text-base font-medium">
+                    Recorded reviewer rationale
+                  </h2>
+                  <RationaleList
+                    items={[
+                      ["Approval note", detail.reviewNote],
+                      ["Rejection reason", detail.rejectionReason],
+                    ]}
+                    emptyLabel="No reviewer rationale is recorded for this draft."
+                  />
+                </section>
+
                 <section className="space-y-3">
                   <h2 className="text-base font-medium">
                     Review history and context
@@ -443,6 +470,13 @@ export default function ReviewQueuePage() {
                           <p className="text-muted-foreground">
                             {event.summary}
                           </p>
+                          <RationaleList
+                            items={[
+                              ["Approval note", event.reviewNote],
+                              ["Rejection reason", event.rejectionReason],
+                            ]}
+                            emptyLabel="No rationale recorded on this history event."
+                          />
                           <p className="text-xs text-muted-foreground">
                             {event.actorLabel} · {event.actorKind} ·{" "}
                             {formatDate(event.occurredAt)}
@@ -566,6 +600,33 @@ function DetailSkeleton() {
         <Skeleton className="h-32 w-full" />
       </CardContent>
     </Card>
+  );
+}
+
+function RationaleList({
+  items,
+  emptyLabel,
+}: {
+  items: Array<[label: string, value?: string | null]>;
+  emptyLabel: string;
+}) {
+  const recordedItems = items.filter(([, value]) => Boolean(value));
+
+  if (recordedItems.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+  }
+
+  return (
+    <dl className="space-y-2">
+      {recordedItems.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </dt>
+          <dd className="mt-1 whitespace-pre-wrap break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

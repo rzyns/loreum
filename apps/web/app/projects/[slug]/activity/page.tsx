@@ -40,6 +40,8 @@ type AuditDetail = ActivitySummary & {
   newData?: unknown;
   diff?: unknown;
   metadata?: unknown;
+  reviewNote?: string | null;
+  rejectionReason?: string | null;
   capabilityContext?: unknown;
   requestId?: string | null;
   correlationId?: string | null;
@@ -72,6 +74,51 @@ function stringifySafe(value: unknown) {
   if (value === undefined || value === null) return "—";
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
+}
+
+function metadataStringValue(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function reviewRationaleFor(detail: AuditDetail) {
+  return {
+    reviewNote:
+      detail.reviewNote ?? metadataStringValue(detail.metadata, "reviewNote"),
+    rejectionReason:
+      detail.rejectionReason ??
+      metadataStringValue(detail.metadata, "rejectionReason"),
+  };
+}
+
+function RationaleList({
+  items,
+  emptyLabel,
+}: {
+  items: Array<[label: string, value?: string | null]>;
+  emptyLabel: string;
+}) {
+  const recordedItems = items.filter(([, value]) => Boolean(value));
+
+  if (recordedItems.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+  }
+
+  return (
+    <dl className="space-y-2">
+      {recordedItems.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </dt>
+          <dd className="mt-1 whitespace-pre-wrap break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export default function ProjectActivityPage() {
@@ -283,6 +330,23 @@ export default function ProjectActivityPage() {
                         </dd>
                       </div>
                     </dl>
+                    {(() => {
+                      const rationale = reviewRationaleFor(detail);
+                      return (
+                        <div className="rounded-lg border bg-muted/30 p-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Reviewer rationale
+                          </p>
+                          <RationaleList
+                            items={[
+                              ["Approval note", rationale.reviewNote],
+                              ["Rejection reason", rationale.rejectionReason],
+                            ]}
+                            emptyLabel="No reviewer rationale is recorded for this audit event."
+                          />
+                        </div>
+                      );
+                    })()}
                     {[
                       ["Redacted metadata", detail.metadata],
                       ["Redacted diff", detail.diff],
