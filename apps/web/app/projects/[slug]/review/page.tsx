@@ -19,6 +19,33 @@ import { useAuth } from "@/lib/auth-context";
 import type { Project } from "@loreum/types";
 
 type DraftStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "APPLIED" | "REJECTED";
+type ReviewCapability =
+  | "draft:approve"
+  | "draft:reject"
+  | "canonical:apply_draft";
+type JsonPreview =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonPreview[]
+  | { [key: string]: JsonPreview };
+
+type SafeProposedContent = Partial<
+  Record<
+    | "description"
+    | "backstory"
+    | "secrets"
+    | "notes"
+    | "imageUrl"
+    | "character"
+    | "location"
+    | "organization"
+    | "item"
+    | "tags",
+    JsonPreview
+  >
+>;
 
 interface ReviewQueueSummary {
   id: string;
@@ -55,8 +82,16 @@ interface ReviewQueueDetail extends ReviewQueueSummary {
   proposed: {
     type?: string;
     name?: string;
+    title?: string;
     slug?: string;
     summary?: string | null;
+    content?: SafeProposedContent;
+  };
+  safeLinks?: {
+    review: string;
+    approve: string;
+    reject: string;
+    proposedCanonical: string | null;
   };
   reviewHistory: ReviewHistoryEvent[];
 }
@@ -87,7 +122,17 @@ export default function ReviewQueuePage() {
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
   const [acting, setActing] = useState<"approve" | "reject" | null>(null);
 
-  const canReviewActions = project?.ownerId === user?.id;
+  const localCapabilities = useMemo<ReviewCapability[]>(() => {
+    // The browser only knows the signed-in user and project owner. The backend
+    // remains authoritative for project-scoped actor capabilities on every
+    // review/apply request.
+    if (project?.ownerId !== user?.id) return [];
+    return ["draft:approve", "draft:reject", "canonical:apply_draft"];
+  }, [project?.ownerId, user?.id]);
+  const canReviewActions =
+    localCapabilities.includes("draft:approve") &&
+    localCapabilities.includes("draft:reject") &&
+    localCapabilities.includes("canonical:apply_draft");
 
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
@@ -130,7 +175,6 @@ export default function ReviewQueuePage() {
     setLoadingDetail(true);
     setDetailError(null);
     setActionError(null);
-    setActionResult(null);
     api<ReviewQueueDetail>(
       `/projects/${params.slug}/drafts/entities/${selectedDraftId}`,
     )
@@ -162,6 +206,11 @@ export default function ReviewQueuePage() {
     await loadQueue();
     setSelectedDraftId((current) => (current === detail?.id ? null : current));
     setDetail(null);
+  };
+
+  const selectDraft = (draftId: string) => {
+    setActionResult(null);
+    setSelectedDraftId(draftId);
   };
 
   const approveDraft = async () => {
@@ -225,8 +274,10 @@ export default function ReviewQueuePage() {
             <h1>Review queue</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
               Review submitted entity-create drafts before they become canonical
-              world content. Proposed values below are staged draft data, not
-              canonical content.
+              world content. Capable project actors can review and apply staged
+              proposals; proposed values below are draft data, not canonical
+              content. Actor and source labels are shown only as audit
+              provenance.
             </p>
           </div>
           <Button variant="outline" onClick={() => void loadQueue()}>
@@ -241,6 +292,17 @@ export default function ReviewQueuePage() {
           className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
         >
           {queueError}
+        </section>
+      ) : null}
+
+      {actionResult ? (
+        <section
+          role="status"
+          className="rounded-lg border border-green-600/30 bg-green-600/10 p-4 text-sm"
+        >
+          {actionResult.canonicalApplied
+            ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
+            : "Draft rejected without changing canonical content."}
         </section>
       ) : null}
 
@@ -261,7 +323,7 @@ export default function ReviewQueuePage() {
             <button
               key={draft.id}
               type="button"
-              onClick={() => setSelectedDraftId(draft.id)}
+              onClick={() => selectDraft(draft.id)}
               className={`w-full rounded-xl text-left outline-none ring-1 ring-foreground/10 transition hover:ring-foreground/25 focus-visible:ring-2 focus-visible:ring-ring ${
                 selectedDraftId === draft.id ? "bg-muted" : "bg-card"
               }`}
@@ -344,6 +406,8 @@ export default function ReviewQueuePage() {
                       }
                     />
                   </dl>
+                  <ProposedContentPreview content={detail.proposed.content} />
+                  <WorkflowLinks links={detail.safeLinks} />
                 </section>
 
                 <section className="grid gap-3 text-sm sm:grid-cols-3">
@@ -389,16 +453,6 @@ export default function ReviewQueuePage() {
                   )}
                 </section>
 
-                {actionResult ? (
-                  <section
-                    role="status"
-                    className="rounded-lg border border-green-600/30 bg-green-600/10 p-3 text-sm"
-                  >
-                    {actionResult.canonicalApplied
-                      ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
-                      : "Draft rejected without changing canonical content."}
-                  </section>
-                ) : null}
                 {actionError ? (
                   <section
                     role="alert"
@@ -472,9 +526,10 @@ export default function ReviewQueuePage() {
                 ) : (
                   <section className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
                     {
-                      "You can inspect staged drafts, but this account is not allowed to approve or reject them."
+                      "You can inspect staged drafts, but this actor does not have the local review/apply affordance."
                     }{" "}
-                    The backend remains authoritative for every review action.
+                    The backend remains authoritative for project-scoped
+                    capabilities on every review action.
                   </section>
                 )}
               </CardContent>
@@ -525,6 +580,69 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function ProposedContentPreview({
+  content,
+}: {
+  content?: SafeProposedContent;
+}) {
+  const entries = Object.entries(content ?? {}).filter(
+    ([, value]) => value !== undefined && value !== null && value !== "",
+  );
+
+  if (entries.length === 0) {
+    return (
+      <p className="mt-4 text-sm text-muted-foreground">
+        No additional staged content fields are available in the review-safe
+        preview.
+      </p>
+    );
+  }
+
+  return (
+    <section
+      className="mt-4 space-y-3"
+      aria-label="Review-safe proposed content"
+    >
+      <div>
+        <h3 className="text-sm font-medium">Review-safe proposed content</h3>
+        <p className="text-xs text-muted-foreground">
+          Redacted staged detail for reviewer context. This is still proposed
+          data and should not be treated as canonical until applied.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {entries.map(([key, value]) => (
+          <div key={key} className="rounded-md border bg-background/70 p-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {formatContentLabel(key)}
+            </div>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/60 p-2 text-xs leading-relaxed">
+              {formatJsonPreview(value)}
+            </pre>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WorkflowLinks({ links }: { links?: ReviewQueueDetail["safeLinks"] }) {
+  if (!links) return null;
+  return (
+    <section className="mt-4 rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
+      <h3 className="mb-2 text-sm font-medium text-foreground">
+        Review workflow links
+      </h3>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        <Field label="Review detail" value={links.review} />
+        <Field label="Approve/apply" value={links.approve} />
+        <Field label="Reject" value={links.reject} />
+        <Field label="Canonical target" value={links.proposedCanonical} />
+      </dl>
+    </section>
+  );
+}
+
 function StatusPill({ status }: { status: DraftStatus }) {
   return (
     <span className="rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -543,6 +661,18 @@ function formatTarget(value?: string) {
 
 function formatEvent(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
+}
+
+function formatContentLabel(value: string) {
+  return value
+    .replaceAll(/([A-Z])/g, " $1")
+    .replaceAll("_", " ")
+    .trim();
+}
+
+function formatJsonPreview(value: JsonPreview) {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
 }
 
 function formatDate(value: string) {

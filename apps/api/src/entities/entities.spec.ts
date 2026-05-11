@@ -235,8 +235,13 @@ describe("Entities (integration)", () => {
         proposed: {
           type: "CHARACTER",
           name: "Detailed Draft",
+          title: "Detailed Draft",
           slug: "detailed-draft",
           summary: "Draft detail summary",
+          content: {
+            description: "unsafe full body should not leak",
+            character: { species: "Maiar", role: "Reviewer target" },
+          },
         },
         reviewHistory: [
           {
@@ -248,9 +253,55 @@ describe("Entities (integration)", () => {
       });
       expect(detail.body.proposed).not.toHaveProperty("description");
       expect(detail.body.proposed).not.toHaveProperty("character");
-      expect(JSON.stringify(detail.body)).not.toContain(
-        "unsafe full body should not leak",
-      );
+    });
+
+    it("returns review-safe proposed content and workflow links in draft detail", async () => {
+      const rawApiKey = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Content Review Draft",
+          summary: "Summary for reviewers",
+          description: `Reviewer-visible prose with ${rawApiKey}`,
+          backstory: "History reviewers need before applying canon",
+          secrets: "In-world secret, not infrastructure credential",
+          notes: "Production note with bearer abcdefghijklmnopqrstuvwxyz123456",
+          imageUrl: "https://example.invalid/art.png",
+          character: { species: "Maiar", role: "Guide" },
+        })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body.proposed).toMatchObject({
+        type: "CHARACTER",
+        name: "Content Review Draft",
+        title: "Content Review Draft",
+        slug: "content-review-draft",
+        summary: "Summary for reviewers",
+        content: {
+          description: "Reviewer-visible prose with [REDACTED]",
+          backstory: "History reviewers need before applying canon",
+          secrets: "In-world secret, not infrastructure credential",
+          notes: "Production note with [REDACTED]",
+          imageUrl: "https://example.invalid/art.png",
+          character: { species: "Maiar", role: "Guide" },
+        },
+      });
+      expect(detail.body.safeLinks).toMatchObject({
+        review: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}`,
+        approve: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}/approve`,
+        reject: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}/reject`,
+        proposedCanonical: `/v1/projects/${projectSlug}/entities/content-review-draft`,
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(rawApiKey);
     });
 
     it("redacts realistic secret and PII patterns from review queue summaries and proposed detail summaries", async () => {
@@ -413,11 +464,13 @@ describe("Entities (integration)", () => {
         expect(detail.body).toMatchObject({
           id: submit.body.draftId,
           displaySummary: "Project-scoped read summary",
-          proposed: { summary: "Project-scoped read summary" },
+          proposed: {
+            summary: "Project-scoped read summary",
+            content: {
+              description: "detail body stays out of safe review payload",
+            },
+          },
         });
-        expect(JSON.stringify(detail.body)).not.toContain(
-          "detail body stays out of safe review payload",
-        );
       },
     );
 
