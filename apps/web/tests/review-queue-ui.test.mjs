@@ -38,10 +38,22 @@ async function source(url) {
 test("review queue page uses the reviewed entity draft API contract", async () => {
   const page = await source(reviewPage);
 
-  assert.match(page, /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=SUBMITTED/);
-  assert.match(page, /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{selectedDraftId\}/);
-  assert.match(page, /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/approve/);
-  assert.match(page, /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/reject/);
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=SUBMITTED/,
+  );
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{selectedDraftId\}/,
+  );
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/approve/,
+  );
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/reject/,
+  );
 });
 
 test("review queue page labels staged draft data and never presents it as canonical", async () => {
@@ -50,17 +62,37 @@ test("review queue page labels staged draft data and never presents it as canoni
   assert.match(page, /Review queue/);
   assert.match(page, /Staged draft/);
   assert.match(page, /not canonical content/i);
+  assert.match(page, /Review-safe proposed content/);
+  assert.match(page, /safeLinks/);
+  assert.match(
+    page,
+    /Actor and source labels are shown only as audit\s+provenance/,
+  );
   assert.match(page, /Approve and apply/);
   assert.match(page, /Reject staged draft/);
-  assert.doesNotMatch(page, /Canonical summary:\s*\{detail\.proposed\.summary\}/);
+  assert.doesNotMatch(
+    page,
+    /Canonical summary:\s*\{detail\.proposed\.summary\}/,
+  );
 });
 
-test("review queue action affordances are owner-capability aware before backend enforcement", async () => {
+test("review queue action affordances are capability-aware before backend enforcement", async () => {
   const page = await source(reviewPage);
 
-  assert.match(page, /project\?\.ownerId === user\?\.id/);
+  assert.match(page, /ReviewCapability/);
+  assert.match(page, /draft:approve/);
+  assert.match(page, /canonical:apply_draft/);
   assert.match(page, /canReviewActions/);
-  assert.match(page, /You can inspect staged drafts, but this account is not allowed to approve or reject them/);
+  assert.match(page, /project-scoped\s+capabilities on every review action/);
+});
+
+test("review queue action result remains visible after list refresh clears detail", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(page, /role="status"/);
+  assert.match(page, /setActionResult\(result\)/);
+  assert.match(page, /setDetail\(null\)/);
+  assert.match(page, /Draft rejected without changing canonical content/);
 });
 
 test("project navigation exposes review queue and activity entries", async () => {
@@ -100,16 +132,25 @@ test("canonical project entity and lore pages show pending draft affordances wit
     ...projectEntityDetailPages.map(source),
   ]);
 
-  assert.match(affordance, /\/projects\/\$\{projectSlug\}\/drafts\/entities\?status=SUBMITTED/);
+  assert.match(
+    affordance,
+    /\/projects\/\$\{projectSlug\}\/drafts\/entities\?status=SUBMITTED/,
+  );
   assert.match(affordance, /pending suggestions?/i);
   assert.match(affordance, /Operational review status/);
   assert.match(affordance, /Review queue/);
-  assert.doesNotMatch(affordance, /proposedData|proposed\.|displaySummary|description/);
+  assert.doesNotMatch(
+    affordance,
+    /proposedData|proposed\.|displaySummary|description/,
+  );
 
   assert.match(lorePage, /PendingDraftAffordance/);
   for (const page of entityPages) {
     assert.match(page, /PendingDraftAffordance/);
-    assert.doesNotMatch(page, /drafts\/entities.*detail|proposedData|proposed\./);
+    assert.doesNotMatch(
+      page,
+      /drafts\/entities.*detail|proposedData|proposed\./,
+    );
   }
 });
 

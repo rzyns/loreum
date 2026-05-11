@@ -235,8 +235,13 @@ describe("Entities (integration)", () => {
         proposed: {
           type: "CHARACTER",
           name: "Detailed Draft",
+          title: "Detailed Draft",
           slug: "detailed-draft",
           summary: "Draft detail summary",
+          content: {
+            description: "unsafe full body should not leak",
+            character: { species: "Maiar", role: "Reviewer target" },
+          },
         },
         reviewHistory: [
           {
@@ -248,9 +253,55 @@ describe("Entities (integration)", () => {
       });
       expect(detail.body.proposed).not.toHaveProperty("description");
       expect(detail.body.proposed).not.toHaveProperty("character");
-      expect(JSON.stringify(detail.body)).not.toContain(
-        "unsafe full body should not leak",
-      );
+    });
+
+    it("returns review-safe proposed content and workflow links in draft detail", async () => {
+      const rawApiKey = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: "Content Review Draft",
+          summary: "Summary for reviewers",
+          description: `Reviewer-visible prose with ${rawApiKey}`,
+          backstory: "History reviewers need before applying canon",
+          secrets: "In-world secret, not infrastructure credential",
+          notes: "Production note with bearer abcdefghijklmnopqrstuvwxyz123456",
+          imageUrl: "https://example.invalid/art.png",
+          character: { species: "Maiar", role: "Guide" },
+        })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body.proposed).toMatchObject({
+        type: "CHARACTER",
+        name: "Content Review Draft",
+        title: "Content Review Draft",
+        slug: "content-review-draft",
+        summary: "Summary for reviewers",
+        content: {
+          description: "Reviewer-visible prose with [REDACTED]",
+          backstory: "History reviewers need before applying canon",
+          secrets: "In-world secret, not infrastructure credential",
+          notes: "Production note with [REDACTED]",
+          imageUrl: "https://example.invalid/art.png",
+          character: { species: "Maiar", role: "Guide" },
+        },
+      });
+      expect(detail.body.safeLinks).toMatchObject({
+        review: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}`,
+        approve: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}/approve`,
+        reject: `/v1/projects/${projectSlug}/drafts/entities/${submit.body.draftId}/reject`,
+        proposedCanonical: `/v1/projects/${projectSlug}/entities/content-review-draft`,
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(rawApiKey);
     });
 
     it("redacts realistic secret and PII patterns from review queue summaries and proposed detail summaries", async () => {
@@ -299,6 +350,88 @@ describe("Entities (integration)", () => {
         expect(JSON.stringify(list.body)).not.toContain(secret);
         expect(JSON.stringify(detail.body)).not.toContain(secret);
       }
+    });
+
+    it("redacts infrastructure-keyed values from nested proposed draft detail", async () => {
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      const rawOpaqueSecret = "opaque-value-that-would-not-match-token-regex";
+      const rawSlugSecret = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const draft = await prisma.draftProposal.create({
+        data: {
+          projectId: project.id,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: "SUBMITTED",
+          proposedData: {
+            type: "CHARACTER",
+            name: "Nested Secret Draft",
+            slug: `nested-${rawSlugSecret}`,
+            summary: "Nested secret summary",
+            character: {
+              species: "Human",
+              role: "Scout",
+              token: rawOpaqueSecret,
+              api_key: rawOpaqueSecret,
+            },
+          },
+          displayName: "Nested Secret Draft",
+          displaySummary: "Nested secret summary",
+          submittedByKind: "HUMAN",
+          submittedByUserId: ownerId,
+          submittedByLabel: "User: nested detail reviewer",
+          sourceKind: "MANUAL",
+        },
+      });
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${draft.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body.proposed.content.character).toMatchObject({
+        species: "Human",
+        role: "Scout",
+        token: "[REDACTED]",
+        api_key: "[REDACTED]",
+      });
+      expect(detail.body.safeLinks).toMatchObject({
+        proposedCanonical: null,
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(rawOpaqueSecret);
+      expect(JSON.stringify(detail.body)).not.toContain(rawSlugSecret);
+
+      const unsafeSlugDraft = await prisma.draftProposal.create({
+        data: {
+          projectId: project.id,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: "SUBMITTED",
+          proposedData: {
+            type: "CHARACTER",
+            name: "Unsafe Link Draft",
+            slug: "unsafe/../entity?token=plain-value",
+            summary: "Unsafe link summary",
+          },
+          displayName: "Unsafe Link Draft",
+          displaySummary: "Unsafe link summary",
+          submittedByKind: "HUMAN",
+          submittedByUserId: ownerId,
+          submittedByLabel: "User: unsafe link reviewer",
+          sourceKind: "MANUAL",
+        },
+      });
+      const unsafeSlugDetail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${unsafeSlugDraft.id}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unsafeSlugDetail.body.safeLinks).toMatchObject({
+        proposedCanonical: null,
+      });
     });
 
     it("redacts secret and PII patterns from draft detail review history", async () => {
@@ -413,11 +546,13 @@ describe("Entities (integration)", () => {
         expect(detail.body).toMatchObject({
           id: submit.body.draftId,
           displaySummary: "Project-scoped read summary",
-          proposed: { summary: "Project-scoped read summary" },
+          proposed: {
+            summary: "Project-scoped read summary",
+            content: {
+              description: "detail body stays out of safe review payload",
+            },
+          },
         });
-        expect(JSON.stringify(detail.body)).not.toContain(
-          "detail body stays out of safe review payload",
-        );
       },
     );
 
@@ -652,7 +787,7 @@ describe("Entities (integration)", () => {
     const activityBase = () => `/v1/projects/${projectSlug}/activity`;
     const auditBase = () => `/v1/projects/${projectSlug}/audit`;
 
-    it("lists project activity from audit events with safe generated summaries", async () => {
+    it("lists project activity from audit events with actor/capability/lifecycle summaries", async () => {
       const submit = await request(app.getHttpServer())
         .post(draftBase())
         .set("Cookie", authCookie)
@@ -673,27 +808,100 @@ describe("Entities (integration)", () => {
         .send({ reviewNote: "approve for activity" })
         .expect(200);
 
+      const rejected = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "LOCATION",
+          name: "Rejected Activity Location",
+          summary: "Rejected activity summary",
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "not ready for canon" })
+        .expect(200);
+
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_APPLY_FAILED",
+          outcome: "FAILURE",
+          actorKind: "AGENT",
+          actorLabel: "API key: failed apply worker",
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          targetDisplay: "Failed Activity Entity",
+          summary: "Internal failure should be replaced in activity",
+        },
+      });
+      await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_SUBMIT_FAILED",
+          outcome: "FAILURE",
+          actorKind: "AGENT",
+          actorLabel: "API key: failed submit worker",
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          targetDisplay: "Failed Submit Entity",
+          summary: "Internal submit failure should be replaced in activity",
+        },
+      });
+
       const res = await request(app.getHttpServer())
         .get(activityBase())
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
         .expect(200);
 
-      expect(res.body.items).toEqual([
-        expect.objectContaining({
-          eventType: "DRAFT_ENTITY_APPLIED",
-          summary: "User applied entity Activity Character",
-          targetDisplay: "Activity Character",
-          actorKind: "HUMAN",
-        }),
-        expect.objectContaining({
-          eventType: "DRAFT_ENTITY_SUBMITTED",
-          summary: "User proposed entity Activity Character",
-          targetDisplay: "Activity Character",
-          actorKind: "HUMAN",
-        }),
-      ]);
-      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 2 });
+      expect(res.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_APPLY_FAILED",
+            summary: "Actor failed to apply entity Failed Activity Entity",
+            targetDisplay: "Failed Activity Entity",
+            actorKind: "AGENT",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_SUBMIT_FAILED",
+            summary: "Actor failed to propose entity Failed Submit Entity",
+            targetDisplay: "Failed Submit Entity",
+            actorKind: "AGENT",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_REJECTED",
+            summary: "Actor rejected entity Rejected Activity Location",
+            targetDisplay: "Rejected Activity Location",
+            actorKind: "HUMAN",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_APPLIED",
+            summary: "Actor applied entity Activity Character",
+            targetDisplay: "Activity Character",
+            actorKind: "HUMAN",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_SUBMITTED",
+            summary: "Actor proposed entity Activity Character",
+            targetDisplay: "Activity Character",
+            actorKind: "HUMAN",
+          }),
+        ]),
+      );
+      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 6 });
+      expect(JSON.stringify(res.body.items)).not.toContain("User ");
+      expect(JSON.stringify(res.body.items)).not.toContain("Agent ");
       expect(JSON.stringify(res.body)).not.toContain(
         "abcdefghijklmnopqrstuvwxyz",
       );
@@ -752,7 +960,7 @@ describe("Entities (integration)", () => {
         expect.objectContaining({
           id: event.id,
           targetDisplay: "Secret-Bearing Entity [REDACTED]",
-          summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+          summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
         }),
       ]);
 
@@ -765,7 +973,7 @@ describe("Entities (integration)", () => {
       expect(detail.body).toMatchObject({
         id: event.id,
         eventType: "DRAFT_ENTITY_SUBMITTED",
-        summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+        summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
         targetDisplay: "Secret-Bearing Entity [REDACTED]",
         newData: {
           name: "Secret-Bearing Entity",
@@ -802,14 +1010,19 @@ describe("Entities (integration)", () => {
           expect.objectContaining({
             id: event.id,
             targetDisplay: "Secret-Bearing Entity [REDACTED]",
-            summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+            summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
           }),
         ]);
 
-        const apiKeyDetail = await request(app.getHttpServer())
+        const apiKeyDetailRequest = request(app.getHttpServer())
           .get(`${auditBase()}/${event.id}`)
-          .set("Authorization", `Bearer ${key.key}`)
-          .expect(200);
+          .set("Authorization", `Bearer ${key.key}`);
+        if (permission === "READ_ONLY") {
+          await apiKeyDetailRequest.expect(403);
+          continue;
+        }
+
+        const apiKeyDetail = await apiKeyDetailRequest.expect(200);
         expect(apiKeyDetail.body).toMatchObject({
           id: event.id,
           newData: { authorization: "[REDACTED]" },

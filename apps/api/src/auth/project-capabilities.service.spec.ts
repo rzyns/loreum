@@ -35,7 +35,29 @@ describe("ProjectCapabilitiesService", () => {
     );
   });
 
-  it("resolves DRAFT_WRITE API keys to draft submission capabilities without approval/application", () => {
+  it("resolves READ_ONLY API keys to summary activity without detailed audit data", () => {
+    const actor = service.resolveApiKeyActor({
+      project: { id: "project-1", slug: "demo", ownerId: "owner-1" },
+      apiKey: {
+        id: "api-key-read",
+        name: "Read-only MCP",
+        permissions: "READ_ONLY",
+        userId: "owner-1",
+      },
+    });
+
+    expect(actor.capabilities).toEqual(
+      expect.arrayContaining([
+        "project:read",
+        "canonical:read",
+        "draft:review",
+        "audit:read_summary",
+      ]),
+    );
+    expect(actor.capabilities).not.toContain("audit:read_detail");
+  });
+
+  it("resolves DRAFT_WRITE API keys to draft submission and audit detail capabilities without approval/application", () => {
     const actor = service.resolveApiKeyActor({
       project: { id: "project-1", slug: "demo", ownerId: "owner-1" },
       apiKey: {

@@ -14,8 +14,21 @@ import { ProjectCapabilitiesService } from "../auth/project-capabilities.service
 import { AuditService } from "../audit/audit.service";
 import { redactInfrastructureSecrets } from "../audit/audit-redaction";
 import { PrismaService } from "../prisma/prisma.service";
-import { generateUniqueSlug } from "../common/utils/slug";
+import { generateUniqueSlug, slugify } from "../common/utils/slug";
 import { CreateEntityDto } from "./dto/create-entity.dto";
+
+type SafeProposedContent = {
+  description?: Prisma.JsonValue;
+  backstory?: Prisma.JsonValue;
+  secrets?: Prisma.JsonValue;
+  notes?: Prisma.JsonValue;
+  imageUrl?: Prisma.JsonValue;
+  character?: Prisma.JsonValue;
+  location?: Prisma.JsonValue;
+  organization?: Prisma.JsonValue;
+  item?: Prisma.JsonValue;
+  tags?: Prisma.JsonValue;
+};
 const listInclude = {
   character: true,
   location: true,
@@ -170,6 +183,7 @@ export class EntityDraftsService {
       ...this.toReviewSummary(draft),
       batchId: draft.batchId,
       proposed: this.toSafeProposedSummary(draft.proposedData),
+      safeLinks: this.toReviewSafeLinks(actor.projectSlug, draft),
       reviewHistory: draft.auditEvents.map((event) => ({
         id: event.id,
         eventType: event.eventType,
@@ -478,8 +492,60 @@ export class EntityDraftsService {
     return {
       type: proposed.type,
       name: this.redactJsonValue(proposed.name),
+      title: this.redactJsonValue(proposed.name),
       slug: this.redactJsonValue(proposed.slug),
       summary: this.redactJsonValue(proposed.summary),
+      content: this.toSafeProposedContent(proposed),
+    };
+  }
+
+  private toSafeProposedContent(proposed: Record<string, Prisma.JsonValue>) {
+    const content: SafeProposedContent = {};
+    for (const key of [
+      "description",
+      "backstory",
+      "secrets",
+      "notes",
+      "imageUrl",
+      "character",
+      "location",
+      "organization",
+      "item",
+      "tags",
+    ] as const) {
+      if (proposed[key] !== undefined) {
+        content[key] = this.redactDomainJsonValue(proposed[key]);
+      }
+    }
+    return content;
+  }
+
+  private toReviewSafeLinks(
+    projectSlug: string | undefined,
+    draft: {
+      id: string;
+      proposedData: Prisma.JsonValue;
+    },
+  ) {
+    const base = `/v1/projects/${projectSlug ?? ""}/drafts/entities/${draft.id}`;
+    const proposed =
+      draft.proposedData &&
+      typeof draft.proposedData === "object" &&
+      !Array.isArray(draft.proposedData)
+        ? (draft.proposedData as Record<string, Prisma.JsonValue>)
+        : {};
+    const slug = typeof proposed.slug === "string" ? proposed.slug : undefined;
+    const safeSlug = slug ? this.redactSafeText(slug) : undefined;
+    const canonicalSlug =
+      slug && safeSlug === slug && slugify(slug) === slug ? slug : undefined;
+
+    return {
+      review: base,
+      approve: `${base}/approve`,
+      reject: `${base}/reject`,
+      proposedCanonical: canonicalSlug
+        ? `/v1/projects/${projectSlug ?? ""}/entities/${canonicalSlug}`
+        : null,
     };
   }
 
@@ -488,6 +554,10 @@ export class EntityDraftsService {
   }
 
   private redactJsonValue(value: Prisma.JsonValue | undefined) {
+    return redactInfrastructureSecrets(value);
+  }
+
+  private redactDomainJsonValue(value: Prisma.JsonValue | undefined) {
     return redactInfrastructureSecrets(value);
   }
 

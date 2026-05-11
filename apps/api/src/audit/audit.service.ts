@@ -259,20 +259,38 @@ export class AuditService {
     },
     targetDisplay: string,
   ) {
-    const actor = event.actorKind === "AGENT" ? "Agent" : "User";
+    const actor = "Actor";
     const target = this.targetNoun(event.targetType);
+    const action = this.lifecycleActionFor(event.eventType);
     if (event.outcome === "FAILURE") {
-      return `${actor} failed ${target} ${targetDisplay}`;
+      return `${actor} failed to ${action} ${target} ${targetDisplay}`;
     }
-    switch (event.eventType) {
-      case "DRAFT_ENTITY_SUBMITTED":
-        return `${actor} proposed ${target} ${targetDisplay}`;
-      case "DRAFT_ENTITY_APPLIED":
-        return `${actor} applied ${target} ${targetDisplay}`;
-      case "DRAFT_ENTITY_REJECTED":
-        return `${actor} rejected ${target} ${targetDisplay}`;
+    return `${actor} ${this.pastTenseLifecycleAction(action)} ${target} ${targetDisplay}`;
+  }
+
+  private lifecycleActionFor(eventType: string) {
+    if (eventType.includes("_SUBMIT") || eventType.includes("_SUBMITTED")) {
+      return "propose";
+    }
+    if (eventType.includes("_APPLY") || eventType.includes("_APPLIED")) {
+      return "apply";
+    }
+    if (eventType.includes("_REJECT") || eventType.includes("_REJECTED")) {
+      return "reject";
+    }
+    return "change";
+  }
+
+  private pastTenseLifecycleAction(action: string) {
+    switch (action) {
+      case "propose":
+        return "proposed";
+      case "apply":
+        return "applied";
+      case "reject":
+        return "rejected";
       default:
-        return `${actor} changed ${target} ${targetDisplay}`;
+        return "changed";
     }
   }
 
