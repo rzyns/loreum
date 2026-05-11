@@ -705,7 +705,7 @@ describe("Entities (integration)", () => {
     const activityBase = () => `/v1/projects/${projectSlug}/activity`;
     const auditBase = () => `/v1/projects/${projectSlug}/audit`;
 
-    it("lists project activity from audit events with safe generated summaries", async () => {
+    it("lists project activity from audit events with actor/capability/lifecycle summaries", async () => {
       const submit = await request(app.getHttpServer())
         .post(draftBase())
         .set("Cookie", authCookie)
@@ -726,27 +726,80 @@ describe("Entities (integration)", () => {
         .send({ reviewNote: "approve for activity" })
         .expect(200);
 
+      const rejected = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "LOCATION",
+          name: "Rejected Activity Location",
+          summary: "Rejected activity summary",
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "not ready for canon" })
+        .expect(200);
+
+      const project = await prisma.project.findUniqueOrThrow({
+        where: { slug: projectSlug },
+        select: { id: true },
+      });
+      await prisma.auditEvent.create({
+        data: {
+          projectId: project.id,
+          eventType: "DRAFT_ENTITY_APPLY_FAILED",
+          outcome: "FAILURE",
+          actorKind: "AGENT",
+          actorLabel: "API key: failed apply worker",
+          sourceKind: "MCP_AGENT",
+          operation: "CREATE",
+          targetType: "ENTITY",
+          targetDisplay: "Failed Activity Entity",
+          summary: "Internal failure should be replaced in activity",
+        },
+      });
+
       const res = await request(app.getHttpServer())
         .get(activityBase())
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
         .expect(200);
 
-      expect(res.body.items).toEqual([
-        expect.objectContaining({
-          eventType: "DRAFT_ENTITY_APPLIED",
-          summary: "User applied entity Activity Character",
-          targetDisplay: "Activity Character",
-          actorKind: "HUMAN",
-        }),
-        expect.objectContaining({
-          eventType: "DRAFT_ENTITY_SUBMITTED",
-          summary: "User proposed entity Activity Character",
-          targetDisplay: "Activity Character",
-          actorKind: "HUMAN",
-        }),
-      ]);
-      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 2 });
+      expect(res.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_APPLY_FAILED",
+            summary: "Actor failed to apply entity Failed Activity Entity",
+            targetDisplay: "Failed Activity Entity",
+            actorKind: "AGENT",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_REJECTED",
+            summary: "Actor rejected entity Rejected Activity Location",
+            targetDisplay: "Rejected Activity Location",
+            actorKind: "HUMAN",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_APPLIED",
+            summary: "Actor applied entity Activity Character",
+            targetDisplay: "Activity Character",
+            actorKind: "HUMAN",
+          }),
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_SUBMITTED",
+            summary: "Actor proposed entity Activity Character",
+            targetDisplay: "Activity Character",
+            actorKind: "HUMAN",
+          }),
+        ]),
+      );
+      expect(res.body.page).toMatchObject({ limit: 50, offset: 0, total: 5 });
+      expect(JSON.stringify(res.body.items)).not.toContain("User ");
+      expect(JSON.stringify(res.body.items)).not.toContain("Agent ");
       expect(JSON.stringify(res.body)).not.toContain(
         "abcdefghijklmnopqrstuvwxyz",
       );
@@ -805,7 +858,7 @@ describe("Entities (integration)", () => {
         expect.objectContaining({
           id: event.id,
           targetDisplay: "Secret-Bearing Entity [REDACTED]",
-          summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+          summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
         }),
       ]);
 
@@ -818,7 +871,7 @@ describe("Entities (integration)", () => {
       expect(detail.body).toMatchObject({
         id: event.id,
         eventType: "DRAFT_ENTITY_SUBMITTED",
-        summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+        summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
         targetDisplay: "Secret-Bearing Entity [REDACTED]",
         newData: {
           name: "Secret-Bearing Entity",
@@ -855,14 +908,19 @@ describe("Entities (integration)", () => {
           expect.objectContaining({
             id: event.id,
             targetDisplay: "Secret-Bearing Entity [REDACTED]",
-            summary: "Agent proposed entity Secret-Bearing Entity [REDACTED]",
+            summary: "Actor proposed entity Secret-Bearing Entity [REDACTED]",
           }),
         ]);
 
-        const apiKeyDetail = await request(app.getHttpServer())
+        const apiKeyDetailRequest = request(app.getHttpServer())
           .get(`${auditBase()}/${event.id}`)
-          .set("Authorization", `Bearer ${key.key}`)
-          .expect(200);
+          .set("Authorization", `Bearer ${key.key}`);
+        if (permission === "READ_ONLY") {
+          await apiKeyDetailRequest.expect(403);
+          continue;
+        }
+
+        const apiKeyDetail = await apiKeyDetailRequest.expect(200);
         expect(apiKeyDetail.body).toMatchObject({
           id: event.id,
           newData: { authorization: "[REDACTED]" },

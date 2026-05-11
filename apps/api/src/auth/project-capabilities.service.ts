@@ -23,13 +23,13 @@ const READ_ONLY_API_KEY_CAPABILITIES = [
   "canonical:read",
   "draft:review",
   "audit:read_summary",
-  "audit:read_detail",
 ] as const;
 
 const DRAFT_WRITE_API_KEY_CAPABILITIES = [
   ...READ_ONLY_API_KEY_CAPABILITIES,
   "draft:create",
   "draft:submit",
+  "audit:read_detail",
 ] as const;
 
 const CANONICAL_WRITE_API_KEY_CAPABILITIES = [

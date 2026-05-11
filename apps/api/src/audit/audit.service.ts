@@ -259,10 +259,10 @@ export class AuditService {
     },
     targetDisplay: string,
   ) {
-    const actor = event.actorKind === "AGENT" ? "Agent" : "User";
+    const actor = "Actor";
     const target = this.targetNoun(event.targetType);
     if (event.outcome === "FAILURE") {
-      return `${actor} failed ${target} ${targetDisplay}`;
+      return `${actor} failed to apply ${target} ${targetDisplay}`;
     }
     switch (event.eventType) {
       case "DRAFT_ENTITY_SUBMITTED":
