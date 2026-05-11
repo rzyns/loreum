@@ -33,14 +33,10 @@ function parseBoolean(value: string | undefined, defaultValue: boolean) {
 
 const DEFAULT_HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>(["create_entity"]);
 
-function httpWriteAllowlist(env: NodeJS.ProcessEnv) {
-  // Full HTTP write-tool exposure is reserved for staging-only testworld smoke
-  // coverage. Normal remote HTTP MCP deployments should keep the default narrow
-  // allowlist and remain read-only/fail-closed unless writes are explicitly opted in.
-  if (parseBoolean(env.MCP_ALLOW_ALL_WRITE_TOOLS, false)) {
-    return new Set<WriteToolName>(WRITE_TOOL_NAMES);
-  }
-
+function httpWriteAllowlist(_env: NodeJS.ProcessEnv) {
+  // Remote HTTP write discovery stays draft-first: create_entity submits a review
+  // draft, while update_entity/create_relationship/create_lore_article still call
+  // canonical mutation endpoints and must remain hidden until draft paths exist.
   return DEFAULT_HTTP_WRITE_ALLOWLIST;
 }
 

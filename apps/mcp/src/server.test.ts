@@ -81,7 +81,7 @@ test("configFromEnv requires explicit HTTP write opt-in and allowlist", () => {
   );
 });
 
-test("configFromEnv allows all HTTP write tools with explicit staging override", () => {
+test("configFromEnv keeps remote HTTP writes draft-first even with legacy all-writes override", () => {
   assert.deepEqual(
     configFromEnv({
       MCP_TRANSPORT: "http",
@@ -97,12 +97,7 @@ test("configFromEnv allows all HTTP write tools with explicit staging override",
       port: 3022,
       httpAuthToken: "secret",
       readOnly: false,
-      writeTools: [
-        "create_entity",
-        "update_entity",
-        "create_relationship",
-        "create_lore_article",
-      ],
+      writeTools: ["create_entity"],
     },
   );
 });
@@ -190,7 +185,7 @@ test("HTTP mode exposes only explicitly allowlisted create_entity write tool by 
   assert.equal(toolNames.includes("create_lore_article"), false);
 });
 
-test("HTTP mode exposes every write tool when explicit staging override is enabled", async () => {
+test("HTTP mode keeps unsafe canonical write tools hidden even when legacy all-writes override is set", async () => {
   const toolNames = await listHttpToolNames({
     ...configFromEnv({
       MCP_TRANSPORT: "http",
@@ -205,9 +200,9 @@ test("HTTP mode exposes every write tool when explicit staging override is enabl
   });
 
   assert.equal(toolNames.includes("create_entity"), true);
-  assert.equal(toolNames.includes("update_entity"), true);
-  assert.equal(toolNames.includes("create_relationship"), true);
-  assert.equal(toolNames.includes("create_lore_article"), true);
+  assert.equal(toolNames.includes("update_entity"), false);
+  assert.equal(toolNames.includes("create_relationship"), false);
+  assert.equal(toolNames.includes("create_lore_article"), false);
 });
 
 test("HTTP mode exposes health, rejects unauthenticated MCP requests, and lists read-only tools", async () => {
