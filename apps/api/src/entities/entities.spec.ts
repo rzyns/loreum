@@ -819,6 +819,88 @@ describe("Entities (integration)", () => {
         );
       }
     });
+
+    it("redacts infrastructure secrets from review rationale responses", async () => {
+      const approved = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "Secret Note Applied Location" })
+        .expect(201);
+      const secretNote =
+        "approved with key lrm_1234567890abcdef1234567890abcdef";
+
+      const applyResponse = await request(app.getHttpServer())
+        .post(`${draftBase()}/${approved.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: secretNote })
+        .expect(200);
+      expect(applyResponse.body.reviewNote).toBe(
+        "approved with key [REDACTED]",
+      );
+
+      const appliedDetail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${approved.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(appliedDetail.body.reviewNote).toBe(
+        "approved with key [REDACTED]",
+      );
+      expect(appliedDetail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            reviewNote: "approved with key [REDACTED]",
+          }),
+        ]),
+      );
+
+      const storedApproved = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: approved.body.draftId },
+      });
+      expect(storedApproved.reviewNote).toBe(secretNote);
+
+      const rejected = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Secret Reason Rejected Character" })
+        .expect(201);
+      const secretReason =
+        "reject until Bearer longbearertokenvalue1234567890 is removed";
+
+      const rejectResponse = await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: secretReason })
+        .expect(200);
+      expect(rejectResponse.body.rejectionReason).toBe(
+        "reject until [REDACTED] is removed",
+      );
+
+      const rejectedDetail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${rejected.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(rejectedDetail.body.rejectionReason).toBe(
+        "reject until [REDACTED] is removed",
+      );
+      expect(rejectedDetail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            rejectionReason: "reject until [REDACTED] is removed",
+          }),
+        ]),
+      );
+
+      const storedRejected = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: rejected.body.draftId },
+      });
+      expect(storedRejected.rejectionReason).toBe(secretReason);
+    });
     it("prevents rejection after a draft has already been applied", async () => {
       const submit = await request(app.getHttpServer())
         .post(draftBase())

@@ -191,8 +191,11 @@ export class EntityDraftsService {
         actorLabel: redactInfrastructureSecrets(event.actorLabel),
         sourceKind: event.sourceKind,
         summary: redactInfrastructureSecrets(event.summary),
-        reviewNote: this.getAuditMetadataString(event.metadata, "reviewNote"),
-        rejectionReason: this.getAuditMetadataString(
+        reviewNote: this.getAuditMetadataRationale(
+          event.metadata,
+          "reviewNote",
+        ),
+        rejectionReason: this.getAuditMetadataRationale(
           event.metadata,
           "rejectionReason",
         ),
@@ -296,7 +299,7 @@ export class EntityDraftsService {
       draftId: applied.id,
       batchId: applied.batchId,
       canonical,
-      reviewNote: applied.reviewNote,
+      reviewNote: this.redactReviewRationale(applied.reviewNote),
     };
   }
 
@@ -373,7 +376,7 @@ export class EntityDraftsService {
       canonicalApplied: false,
       draftId: rejected.id,
       batchId: rejected.batchId,
-      rejectionReason: rejected.rejectionReason,
+      rejectionReason: this.redactReviewRationale(rejected.rejectionReason),
     };
   }
 
@@ -490,14 +493,14 @@ export class EntityDraftsService {
       submittedByLabel: this.redactSafeText(draft.submittedByLabel),
       sourceKind: draft.sourceKind,
       canonicalApplied: Boolean(draft.appliedTargetId || draft.appliedAt),
-      reviewNote: draft.reviewNote ?? null,
-      rejectionReason: draft.rejectionReason ?? null,
+      reviewNote: this.redactReviewRationale(draft.reviewNote),
+      rejectionReason: this.redactReviewRationale(draft.rejectionReason),
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
     };
   }
 
-  private getAuditMetadataString(
+  private getAuditMetadataRationale(
     metadata: Prisma.JsonValue,
     key: "reviewNote" | "rejectionReason",
   ): string | null {
@@ -505,7 +508,13 @@ export class EntityDraftsService {
       return null;
     }
     const value = (metadata as Record<string, Prisma.JsonValue>)[key];
-    return typeof value === "string" ? value : null;
+    return this.redactReviewRationale(typeof value === "string" ? value : null);
+  }
+
+  private redactReviewRationale(
+    value: string | null | undefined,
+  ): string | null {
+    return value == null ? null : redactInfrastructureSecrets(value);
   }
 
   private toSafeProposedSummary(value: Prisma.JsonValue) {
