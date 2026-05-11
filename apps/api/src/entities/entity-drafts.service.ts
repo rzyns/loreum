@@ -461,7 +461,7 @@ export class EntityDraftsService {
       draftId: draft.id,
       batchId: draft.batchId,
       canonical,
-      reviewNote: draft.reviewNote ?? null,
+      reviewNote: this.redactReviewRationale(draft.reviewNote),
     };
   }
 

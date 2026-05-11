@@ -938,30 +938,54 @@ describe("Entities (integration)", () => {
         .set("x-csrf-token", csrfToken)
         .send({ type: "LOCATION", name: "Retry Applied Location" })
         .expect(201);
+      const secretNote =
+        "first approval with key lrm_retry1234567890abcdef1234567890";
 
       const first = await request(app.getHttpServer())
         .post(`${draftBase()}/${submit.body.draftId}/approve`)
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
-        .send({ reviewNote: "first approval" })
+        .send({ reviewNote: secretNote })
         .expect(200);
 
       const retry = await request(app.getHttpServer())
         .post(`${draftBase()}/${submit.body.draftId}/approve`)
         .set("Cookie", authCookie)
         .set("x-csrf-token", csrfToken)
-        .send({ reviewNote: "retry approval" })
+        .send({ reviewNote: "retry approval should not overwrite stored note" })
         .expect(200);
 
+      expect(first.body.reviewNote).toBe("first approval with key [REDACTED]");
       expect(retry.body).toMatchObject({
         status: "applied",
         canonicalApplied: true,
         draftId: submit.body.draftId,
+        reviewNote: "first approval with key [REDACTED]",
         canonical: {
           id: first.body.canonical.id,
           name: "Retry Applied Location",
         },
       });
+
+      const storedDraft = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: submit.body.draftId },
+      });
+      expect(storedDraft.reviewNote).toBe(secretNote);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(detail.body.reviewNote).toBe("first approval with key [REDACTED]");
+      expect(detail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            reviewNote: "first approval with key [REDACTED]",
+          }),
+        ]),
+      );
+
       expect(await prisma.entity.count()).toBe(1);
     });
   });
