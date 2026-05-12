@@ -155,6 +155,11 @@ test("activity page consumes safe audit summaries and gates audit detail access"
   assert.match(page, /Audit detail is restricted/);
   assert.match(page, /safe changelog summary remains visible/i);
   assert.match(page, /Reviewer rationale/);
+  assert.match(page, /Review-event provenance/);
+  assert.match(page, /Causation/);
+  assert.match(page, /Related review surface/);
+  assert.match(page, /Open review queue/);
+  assert.match(page, /href=\{reviewQueueHref\(params\.slug\)\}/);
   assert.match(page, /metadataStringValue\(detail\.metadata, "reviewNote"\)/);
   assert.match(page, /No reviewer rationale is recorded for this audit event/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);
