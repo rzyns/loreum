@@ -19,7 +19,11 @@ import { useAuth } from "@/lib/auth-context";
 import type { Project } from "@loreum/types";
 
 type DraftStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "APPLIED" | "REJECTED";
-type ReviewQueueFilterStatus = "SUBMITTED" | "REJECTED" | "APPLIED";
+type ReviewQueueFilterStatus =
+  | "SUBMITTED"
+  | "REJECTED"
+  | "APPLIED"
+  | "ARCHIVED";
 type ReviewQueueFilter = {
   status: ReviewQueueFilterStatus;
   label: string;
@@ -52,6 +56,14 @@ const REVIEW_QUEUE_FILTERS = [
     emptyTitle: "No applied drafts",
     emptyDescription:
       "Approved and applied entity-create drafts will appear here with their canonical target context.",
+  },
+  {
+    status: "ARCHIVED",
+    label: "Archived",
+    description: "Terminal drafts hidden from default history",
+    emptyTitle: "No archived terminal drafts",
+    emptyDescription:
+      "Archived rejected/applied drafts remain inspectable here with their evidence, rationale, and canonical target context.",
   },
 ] satisfies readonly [ReviewQueueFilter, ...ReviewQueueFilter[]];
 type ReviewCapability =
@@ -95,6 +107,11 @@ interface ReviewQueueSummary {
   canonicalApplied: boolean;
   reviewNote?: string | null;
   rejectionReason?: string | null;
+  archive?: {
+    archived: boolean;
+    archivedAt?: string | null;
+    archiveReason?: string | null;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -113,6 +130,8 @@ interface ReviewHistoryEvent {
   summary: string;
   reviewNote?: string | null;
   rejectionReason?: string | null;
+  archiveReason?: string | null;
+  unarchiveReason?: string | null;
   occurredAt: string;
 }
 
@@ -142,13 +161,19 @@ interface ReviewQueueDetail extends ReviewQueueSummary {
 }
 
 interface ActionResult {
-  status: "applied" | "rejected";
-  canonicalApplied: boolean;
+  status: "applied" | "rejected" | "archived" | "unarchived";
+  canonicalApplied?: boolean;
   draftId: string;
   batchId: string;
   canonical?: { id: string; slug: string; name: string };
   reviewNote?: string | null;
   rejectionReason?: string | null;
+  archiveReason?: string | null;
+}
+
+interface ArchiveActionResult extends ActionResult {
+  draftStatus: DraftStatus;
+  archivedAt?: string | null;
 }
 
 export default function ReviewQueuePage() {
@@ -168,7 +193,9 @@ export default function ReviewQueuePage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<ActionResult | null>(null);
-  const [acting, setActing] = useState<"approve" | "reject" | null>(null);
+  const [acting, setActing] = useState<
+    "approve" | "reject" | "archive" | "restore" | null
+  >(null);
 
   const localCapabilities = useMemo<ReviewCapability[]>(() => {
     // The browser only knows the signed-in user and project owner. The backend
@@ -181,6 +208,7 @@ export default function ReviewQueuePage() {
     localCapabilities.includes("draft:approve") &&
     localCapabilities.includes("draft:reject") &&
     localCapabilities.includes("canonical:apply_draft");
+  const canArchiveActions = project?.ownerId === user?.id;
 
   const activeFilter = useMemo(
     () =>
@@ -196,7 +224,9 @@ export default function ReviewQueuePage() {
       const [projectResponse, reviewQueue] = await Promise.all([
         api<Project>(`/projects/${params.slug}`),
         api<ReviewQueueResponse>(
-          `/projects/${params.slug}/drafts/entities?status=${statusFilter}&targetType=ENTITY&operation=CREATE`,
+          `/projects/${params.slug}/drafts/entities?status=${statusFilter}&targetType=ENTITY&operation=CREATE${
+            statusFilter === "ARCHIVED" ? "&archived=only" : ""
+          }`,
         ),
       ]);
       setProject(projectResponse);
@@ -325,6 +355,66 @@ export default function ReviewQueuePage() {
     }
   };
 
+  const archiveDraft = async () => {
+    if (
+      !detail ||
+      acting ||
+      !canArchiveActions ||
+      detail.status === "SUBMITTED"
+    )
+      return;
+
+    setActing("archive");
+    setActionError(null);
+    setActionResult(null);
+    try {
+      const result = await api<ArchiveActionResult>(
+        `/projects/${params.slug}/drafts/entities/${detail.id}/archive`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: "Archived from review queue" }),
+        },
+      );
+      await finishAction({
+        ...result,
+        canonicalApplied: detail.canonicalApplied,
+      });
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Draft action failed.",
+      );
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const restoreDraft = async () => {
+    if (!detail || acting || !canArchiveActions) return;
+
+    setActing("restore");
+    setActionError(null);
+    setActionResult(null);
+    try {
+      const result = await api<ArchiveActionResult>(
+        `/projects/${params.slug}/drafts/entities/${detail.id}/unarchive`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: "Restored to review history" }),
+        },
+      );
+      await finishAction({
+        ...result,
+        canonicalApplied: detail.canonicalApplied,
+      });
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Draft action failed.",
+      );
+    } finally {
+      setActing(null);
+    }
+  };
+
   return (
     <main className="space-y-6 p-4 md:p-6">
       <header className="space-y-2">
@@ -364,14 +454,19 @@ export default function ReviewQueuePage() {
           className="space-y-3 rounded-lg border border-green-600/30 bg-green-600/10 p-4 text-sm"
         >
           <p>
-            {actionResult.canonicalApplied
-              ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
-              : "Draft rejected without changing canonical content."}
+            {actionResult.status === "archived"
+              ? "Draft archived from the default review history."
+              : actionResult.status === "unarchived"
+                ? "Draft restored to the default review history."
+                : actionResult.canonicalApplied
+                  ? `Draft applied to canonical entity ${actionResult.canonical?.name ?? actionResult.draftId}.`
+                  : "Draft rejected without changing canonical content."}
           </p>
           <RationaleList
             items={[
               ["Recorded approval note", actionResult.reviewNote],
               ["Recorded rejection reason", actionResult.rejectionReason],
+              ["Recorded archive reason", actionResult.archiveReason],
             ]}
             emptyLabel="No reviewer rationale was recorded for this action."
           />
@@ -382,7 +477,7 @@ export default function ReviewQueuePage() {
         className="rounded-lg border bg-muted/30 p-3"
         aria-label="Review queue status filters"
       >
-        <div className="grid gap-2 md:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-4">
           {REVIEW_QUEUE_FILTERS.map((filter) => (
             <button
               key={filter.status}
@@ -575,6 +670,8 @@ export default function ReviewQueuePage() {
                             items={[
                               ["Approval note", event.reviewNote],
                               ["Rejection reason", event.rejectionReason],
+                              ["Archive reason", event.archiveReason],
+                              ["Restore reason", event.unarchiveReason],
                             ]}
                             emptyLabel="No rationale recorded on this history event."
                           />
@@ -598,7 +695,13 @@ export default function ReviewQueuePage() {
                 ) : null}
 
                 {detail.status !== "SUBMITTED" ? (
-                  <HistoricalStateNotice detail={detail} />
+                  <HistoricalStateNotice
+                    detail={detail}
+                    canArchiveActions={canArchiveActions}
+                    acting={acting}
+                    onArchive={archiveDraft}
+                    onRestore={restoreDraft}
+                  />
                 ) : canReviewActions ? (
                   <section className="space-y-4 rounded-lg border p-4">
                     <h2 className="text-base font-medium">Review actions</h2>
@@ -790,18 +893,48 @@ function ProposedContentPreview({
   );
 }
 
-function HistoricalStateNotice({ detail }: { detail: ReviewQueueDetail }) {
+function HistoricalStateNotice({
+  detail,
+  canArchiveActions,
+  acting,
+  onArchive,
+  onRestore,
+}: {
+  detail: ReviewQueueDetail;
+  canArchiveActions: boolean;
+  acting: "approve" | "reject" | "archive" | "restore" | null;
+  onArchive: () => void;
+  onRestore: () => void;
+}) {
   const statusLabel = detail.status.toLowerCase();
+  const archived = Boolean(detail.archive?.archived);
   return (
-    <section className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+    <section className="space-y-3 rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
       <p className="font-medium text-foreground">
         Historical {statusLabel} draft
       </p>
-      <p className="mt-1">
+      <p>
         Review actions are unavailable because this draft is already{" "}
         {statusLabel}. It remains visible here for evidence review, rationale
         inspection, and canonical target context when available.
       </p>
+      <p>
+        This hides the terminal draft from the default review history. It does
+        not delete the draft, proposed content, review rationale, canonical
+        target, or audit events.
+      </p>
+      {canArchiveActions ? (
+        <Button
+          variant="outline"
+          onClick={() => (archived ? onRestore() : onArchive())}
+          disabled={Boolean(acting)}
+        >
+          {acting === "archive" || acting === "restore" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : null}
+          {archived ? "Restore to history" : "Archive from default history"}
+        </Button>
+      ) : null}
     </section>
   );
 }
@@ -844,7 +977,11 @@ function WorkflowLinks({
   );
 }
 
-function StatusPill({ status }: { status: DraftStatus }) {
+function StatusPill({
+  status,
+}: {
+  status: DraftStatus | ReviewQueueFilterStatus;
+}) {
   return (
     <span className="rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground">
       {status.toLowerCase()}

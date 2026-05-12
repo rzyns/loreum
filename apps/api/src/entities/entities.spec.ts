@@ -711,7 +711,10 @@ describe("Entities (integration)", () => {
         .expect(200);
       expect(appliedList.body.items).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: submit.body.draftId, status: "APPLIED" }),
+          expect.objectContaining({
+            id: submit.body.draftId,
+            status: "APPLIED",
+          }),
         ]),
       );
       expect(
@@ -1029,6 +1032,227 @@ describe("Entities (integration)", () => {
       );
 
       expect(await prisma.entity.count()).toBe(1);
+    });
+
+    it("archives and restores terminal entity drafts without deleting evidence", async () => {
+      const rejected = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Archive Rejected Character" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "terminal cleanup candidate" })
+        .expect(200);
+
+      const applied = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "LOCATION", name: "Archive Applied Location" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${applied.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "safe to canonize" })
+        .expect(200);
+
+      const archiveReason =
+        "hide after review with key lrm_archive1234567890abcdef123456";
+      const archiveRejected = await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/archive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: archiveReason })
+        .expect(200);
+      expect(archiveRejected.body).toMatchObject({
+        status: "archived",
+        draftId: rejected.body.draftId,
+        batchId: rejected.body.batchId,
+        draftStatus: "REJECTED",
+        archiveReason: "hide after review with key [REDACTED]",
+      });
+      expect(archiveRejected.body.archivedAt).toEqual(expect.any(String));
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${applied.body.draftId}/archive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "applied history cleanup" })
+        .expect(200);
+
+      const rejectedDefault = await request(app.getHttpServer())
+        .get(`${draftBase()}?status=REJECTED`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(rejectedDefault.body.items).toEqual([]);
+
+      const archivedOnly = await request(app.getHttpServer())
+        .get(draftBase())
+        .query({ status: "REJECTED", archived: "only" })
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(archivedOnly.body.items).toEqual([
+        expect.objectContaining({
+          id: rejected.body.draftId,
+          status: "REJECTED",
+          archive: expect.objectContaining({
+            archived: true,
+            archiveReason: "hide after review with key [REDACTED]",
+          }),
+        }),
+      ]);
+
+      const archivedDetail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${rejected.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(archivedDetail.body).toMatchObject({
+        id: rejected.body.draftId,
+        status: "REJECTED",
+        rejectionReason: "terminal cleanup candidate",
+        archive: {
+          archived: true,
+          archivedAt: expect.any(String),
+          archiveReason: "hide after review with key [REDACTED]",
+        },
+      });
+      expect(archivedDetail.body.reviewHistory).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventType: "DRAFT_ENTITY_ARCHIVED",
+            archiveReason: "hide after review with key [REDACTED]",
+          }),
+        ]),
+      );
+
+      const storedArchived = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: rejected.body.draftId },
+      });
+      expect(storedArchived.status).toBe("REJECTED");
+      expect(storedArchived.proposedData).toBeTruthy();
+      expect(storedArchived.rejectionReason).toBe("terminal cleanup candidate");
+      expect(storedArchived.archiveReason).toBe(archiveReason);
+
+      const restore = await request(app.getHttpServer())
+        .post(`${draftBase()}/${rejected.body.draftId}/unarchive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "restore for visible history" })
+        .expect(200);
+      expect(restore.body).toMatchObject({
+        status: "unarchived",
+        draftId: rejected.body.draftId,
+        draftStatus: "REJECTED",
+        archivedAt: null,
+        archiveReason: null,
+      });
+
+      const rejectedRestored = await request(app.getHttpServer())
+        .get(`${draftBase()}?status=REJECTED`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(rejectedRestored.body.items).toEqual([
+        expect.objectContaining({
+          id: rejected.body.draftId,
+          archive: expect.objectContaining({ archived: false }),
+        }),
+      ]);
+
+      const auditEvents = await prisma.auditEvent.findMany({
+        where: { draftId: rejected.body.draftId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(auditEvents.map((event) => event.eventType)).toEqual([
+        "DRAFT_ENTITY_SUBMITTED",
+        "DRAFT_ENTITY_REJECTED",
+        "DRAFT_ENTITY_ARCHIVED",
+        "DRAFT_ENTITY_UNARCHIVED",
+      ]);
+      expect(auditEvents[2]!.metadata).toMatchObject({
+        archiveReason: "hide after review with key [REDACTED]",
+        previousArchivedAt: null,
+        draftStatus: "REJECTED",
+        archiveVisibilityScope: "default_review_history_only",
+      });
+      expect(auditEvents[3]!.metadata).toMatchObject({
+        unarchiveReason: "restore for visible history",
+        newArchivedAt: null,
+        draftStatus: "REJECTED",
+        archiveVisibilityScope: "default_review_history_only",
+      });
+    });
+
+    it("rejects archive requests for pending or already archived drafts", async () => {
+      const submitted = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Submitted Archive Blocked" })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submitted.body.draftId}/archive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "should not hide pending work" })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submitted.body.draftId}/unarchive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "not archived" })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submitted.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "terminal now" })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submitted.body.draftId}/archive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "first archive" })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submitted.body.draftId}/archive`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reason: "double archive" })
+        .expect(400);
+    });
+
+    it("does not let API keys archive terminal drafts through review endpoints", async () => {
+      const submit = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ type: "CHARACTER", name: "Human Terminal Draft" })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: "terminal" })
+        .expect(200);
+
+      const key = await createApiKey("READ_WRITE", "archive denied key");
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/archive`)
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({ reason: "api key cannot archive" })
+        .expect(403);
     });
   });
 

@@ -97,10 +97,36 @@ test("review queue hides review actions for historical terminal drafts", async (
 
   assert.match(page, /HistoricalStateNotice/);
   assert.match(page, /detail\.status !== "SUBMITTED"/);
-  assert.match(page, /Review actions are unavailable because this draft is already/);
+  assert.match(
+    page,
+    /Review actions are unavailable because this draft is already/,
+  );
   assert.match(page, /status === "SUBMITTED" \? \(/);
   assert.match(page, /Applied canonical target/);
   assert.match(page, /appliedCanonical/);
+});
+
+test("review queue exposes reversible archive affordances without pending archive", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(
+    page,
+    /ReviewQueueFilterStatus = "SUBMITTED" \| "REJECTED" \| "APPLIED" \| "ARCHIVED"/,
+  );
+  assert.match(page, /label: "Archived"/);
+  assert.match(page, /No archived terminal drafts/);
+  assert.match(page, /archived=only/);
+  assert.match(page, /Archive from default history/);
+  assert.match(page, /Restore to history/);
+  assert.match(
+    page,
+    /This hides the terminal draft from the default review history/,
+  );
+  assert.match(
+    page,
+    /It does not delete the draft, proposed content, review rationale, canonical target, or audit events/,
+  );
+  assert.doesNotMatch(page, /Delete draft|Remove evidence|Clear history/);
 });
 
 test("review queue action result remains visible after list refresh clears detail", async () => {
@@ -124,7 +150,10 @@ test("review queue surfaces durable reviewer rationale and explicit absence", as
   assert.match(page, /No rationale recorded on this history event/);
   assert.match(page, /No reviewer rationale was recorded for this action/);
   assert.match(page, /reviewNote: reviewNote\.trim\(\) \|\| undefined/);
-  assert.match(page, /rejectionReason: rejectionReason\.trim\(\) \|\| undefined/);
+  assert.match(
+    page,
+    /rejectionReason: rejectionReason\.trim\(\) \|\| undefined/,
+  );
 });
 
 test("project navigation exposes review queue and activity entries", async () => {
