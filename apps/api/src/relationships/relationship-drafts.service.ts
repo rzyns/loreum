@@ -44,6 +44,15 @@ type RelationshipCreateDraftInput = Omit<CreateRelationshipDto, "label"> & {
   type?: string;
 };
 
+type RelationshipDraftListStatus =
+  (typeof RELATIONSHIP_DRAFT_LIST_STATUSES)[number];
+
+const RELATIONSHIP_DRAFT_LIST_STATUSES = [
+  "SUBMITTED",
+  "REJECTED",
+  "APPLIED",
+] as const;
+
 @Injectable()
 export class RelationshipDraftsService {
   constructor(
@@ -127,6 +136,36 @@ export class RelationshipDraftsService {
       batchId: draft.batchId,
       displayName: this.redactSafeText(draft.displayName),
     };
+  }
+
+  async listRelationshipDrafts(
+    projectId: string,
+    actor: ActorContext,
+    status?: string,
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.capabilities.assertCapabilities(actor, [
+      "draft:review",
+      "audit:read_summary",
+    ]);
+
+    const safeStatus = this.normalizeListStatus(status);
+    const drafts = await this.prisma.draftProposal.findMany({
+      where: {
+        projectId,
+        targetType: "RELATIONSHIP",
+        operation: "CREATE",
+        status: safeStatus,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return drafts.map((draft) => ({
+      ...this.toReviewSummary(draft),
+      batchId: draft.batchId,
+      proposed: this.toSafeRelationshipPreview(draft),
+      safeLinks: this.toReviewSafeLinks(actor.projectSlug, draft.id),
+    }));
   }
 
   async getRelationshipDraftDetail(
@@ -366,6 +405,24 @@ export class RelationshipDraftsService {
       canonical,
       reviewNote: this.redactReviewRationale(applied.reviewNote),
     };
+  }
+
+  private normalizeListStatus(
+    status: string | undefined,
+  ): RelationshipDraftListStatus {
+    if (status === undefined || status === "") {
+      return "SUBMITTED";
+    }
+    if (
+      RELATIONSHIP_DRAFT_LIST_STATUSES.includes(
+        status as RelationshipDraftListStatus,
+      )
+    ) {
+      return status as RelationshipDraftListStatus;
+    }
+    throw new BadRequestException(
+      `Relationship draft status must be one of: ${RELATIONSHIP_DRAFT_LIST_STATUSES.join(", ")}`,
+    );
   }
 
   private async findRelationshipDraft(projectId: string, draftId: string) {

@@ -155,6 +155,186 @@ describe("Relationships (integration)", () => {
     });
   });
 
+  it("lets reviewers discover relationship drafts with status filters and safe redacted summaries", async () => {
+    const draftWriteKey = await createApiKey("DRAFT_WRITE");
+    const reviewerKey = await createApiKey("READ_ONLY");
+
+    const pending = await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        sourceEntitySlug: "gandalf",
+        targetEntitySlug: "frodo",
+        label: "Secret Mentor",
+        description: "Guides with sk-proj-abcdefghijklmnopqrstuvwxyz",
+        metadata: { api_key: "lrm_1234567890abcdefghijklmnop" },
+      })
+      .expect(201);
+
+    const rejectedDraft = await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        sourceEntitySlug: "gandalf",
+        targetEntitySlug: "frodo",
+        label: "Rejected Mentor",
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`${draftBase()}/${rejectedDraft.body.draftId}/reject`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ rejectionReason: "contains lrm_1234567890abcdefghijklmnop" })
+      .expect(200);
+
+    const appliedDraft = await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        sourceEntitySlug: "gandalf",
+        targetEntitySlug: "frodo",
+        label: "Applied Mentor",
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`${draftBase()}/${appliedDraft.body.draftId}/approve`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ reviewNote: "approved with sk-proj-abcdefghijklmnopqrstuvwxyz" })
+      .expect(200);
+
+    const otherProject = await request(app.getHttpServer())
+      .post("/v1/projects")
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ name: "Other Rel World" })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/v1/projects/${otherProject.body.slug}/entities`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ type: "CHARACTER", name: "Sam" })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/v1/projects/${otherProject.body.slug}/entities`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({ type: "CHARACTER", name: "Merry" })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/v1/projects/${otherProject.body.slug}/drafts/relationships`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .send({
+        sourceEntitySlug: "sam",
+        targetEntitySlug: "merry",
+        label: "Friend",
+      })
+      .expect(201);
+
+    await expect(prisma.relationship.count()).resolves.toBe(1);
+
+    const defaultList = await request(app.getHttpServer())
+      .get(draftBase())
+      .set(bearer(reviewerKey))
+      .expect(200);
+
+    expect(defaultList.body).toHaveLength(1);
+    expect(defaultList.body[0]).toMatchObject({
+      id: pending.body.draftId,
+      status: "SUBMITTED",
+      targetType: "RELATIONSHIP",
+      operation: "CREATE",
+      canonicalApplied: false,
+      displayName: "Gandalf — Secret Mentor — Frodo",
+      displaySummary: "Guides with [REDACTED]",
+      proposed: {
+        title: "Gandalf — Secret Mentor — Frodo",
+        content: {
+          sourceEntity: { slug: "gandalf", name: "Gandalf" },
+          targetEntity: { slug: "frodo", name: "Frodo" },
+          label: "Secret Mentor",
+          description: "Guides with [REDACTED]",
+          metadata: { api_key: "[REDACTED]" },
+        },
+      },
+      safeLinks: {
+        review: `${draftBase()}/${pending.body.draftId}`,
+        approve: `${draftBase()}/${pending.body.draftId}/approve`,
+        reject: `${draftBase()}/${pending.body.draftId}/reject`,
+        relationships: base(),
+      },
+    });
+    expect(defaultList.body[0]).not.toHaveProperty("proposedData");
+    expect(JSON.stringify(defaultList.body)).not.toContain("sk-pro");
+    expect(JSON.stringify(defaultList.body)).not.toContain(
+      "lrm_1234567890abcdefghijklmnop",
+    );
+
+    const rejected = await request(app.getHttpServer())
+      .get(`${draftBase()}?status=REJECTED`)
+      .set(bearer(reviewerKey))
+      .expect(200);
+    expect(rejected.body.map((draft: { id: string }) => draft.id)).toEqual([
+      rejectedDraft.body.draftId,
+    ]);
+
+    const applied = await request(app.getHttpServer())
+      .get(`${draftBase()}?status=APPLIED`)
+      .set(bearer(reviewerKey))
+      .expect(200);
+    expect(applied.body.map((draft: { id: string }) => draft.id)).toEqual([
+      appliedDraft.body.draftId,
+    ]);
+
+    await request(app.getHttpServer())
+      .get(`${draftBase()}?status=DRAFT`)
+      .set(bearer(reviewerKey))
+      .expect(400);
+  });
+
+  it("accepts matching relationship draft label/type aliases", async () => {
+    const draftWriteKey = await createApiKey("DRAFT_WRITE");
+
+    const submitted = await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        sourceEntitySlug: "gandalf",
+        targetEntitySlug: "frodo",
+        label: "Mentor",
+        type: "Mentor",
+      })
+      .expect(201);
+
+    expect(submitted.body).toMatchObject({
+      status: "submitted",
+      canonicalApplied: false,
+      displayName: "Gandalf — Mentor — Frodo",
+    });
+    await expect(prisma.relationship.count()).resolves.toBe(0);
+  });
+
+  it("rejects conflicting relationship draft label/type aliases without staging a draft", async () => {
+    const draftWriteKey = await createApiKey("DRAFT_WRITE");
+
+    await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        sourceEntitySlug: "gandalf",
+        targetEntitySlug: "frodo",
+        label: "Mentor",
+        type: "Enemy",
+      })
+      .expect(400);
+
+    await expect(prisma.draftProposal.count()).resolves.toBe(0);
+    await expect(prisma.relationship.count()).resolves.toBe(0);
+  });
+
   it("rejects or applies staged relationship drafts without duplicate canonical relationships", async () => {
     const draftWriteKey = await createApiKey("DRAFT_WRITE");
 

@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiCookieAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -54,6 +55,22 @@ export class RelationshipDraftsController {
     private capabilities: ProjectCapabilitiesService,
     private relationshipDraftsService: RelationshipDraftsService,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: "List safe relationship draft review rows" })
+  async list(
+    @Param("projectSlug") projectSlug: string,
+    @User() user: AuthUser,
+    @Query("status") status?: string,
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.relationshipDraftsService.listRelationshipDrafts(
+      project.id,
+      actor,
+      status,
+    );
+  }
 
   @Get(":draftId")
   @ApiOperation({ summary: "Read a safe relationship draft review detail" })
