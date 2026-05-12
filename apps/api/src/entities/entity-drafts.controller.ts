@@ -15,6 +15,7 @@ import { AuthUser } from "../auth/types/jwt.types";
 import { ProjectCapabilitiesService } from "../auth/project-capabilities.service";
 import { ProjectsService } from "../projects/projects.service";
 import { CreateEntityDto } from "./dto/create-entity.dto";
+import { SubmitEntityUpdateDraftDto } from "./dto/submit-entity-update-draft.dto";
 import { EntityDraftsService } from "./entity-drafts.service";
 
 @ApiTags("Entity drafts")
@@ -78,6 +79,26 @@ export class EntityDraftsController {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
     const actor = this.resolveActor(project, user);
     return this.entityDraftsService.submitEntityDraft(project.id, dto, actor);
+  }
+
+  @Post(":entitySlug/update")
+  @ApiOperation({
+    summary: "Submit a draft entity update without applying canonically",
+  })
+  async submitUpdate(
+    @Param("projectSlug") projectSlug: string,
+    @Param("entitySlug") entitySlug: string,
+    @User() user: AuthUser,
+    @Body() dto: SubmitEntityUpdateDraftDto,
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.submitEntityUpdateDraft(
+      project.id,
+      entitySlug,
+      dto,
+      actor,
+    );
   }
 
   @Post(":draftId/approve")

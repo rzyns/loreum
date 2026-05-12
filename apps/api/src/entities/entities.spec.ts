@@ -1,6 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import request from "supertest";
 import * as crypto from "crypto";
+import * as slugUtils from "../common/utils/slug";
 import { INestApplication } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
@@ -859,7 +868,8 @@ describe("Entities (integration)", () => {
       const storedApproved = await prisma.draftProposal.findUniqueOrThrow({
         where: { id: approved.body.draftId },
       });
-      expect(storedApproved.reviewNote).toBe(secretNote);
+      expect(storedApproved.reviewNote).toBe("approved with key [REDACTED]");
+      expect(storedApproved.reviewNote).not.toContain(secretNote);
 
       const rejected = await request(app.getHttpServer())
         .post(draftBase())
@@ -899,7 +909,10 @@ describe("Entities (integration)", () => {
       const storedRejected = await prisma.draftProposal.findUniqueOrThrow({
         where: { id: rejected.body.draftId },
       });
-      expect(storedRejected.rejectionReason).toBe(secretReason);
+      expect(storedRejected.rejectionReason).toBe(
+        "reject until [REDACTED] is removed",
+      );
+      expect(storedRejected.rejectionReason).not.toContain(secretReason);
     });
     it("prevents rejection after a draft has already been applied", async () => {
       const submit = await request(app.getHttpServer())
@@ -970,7 +983,8 @@ describe("Entities (integration)", () => {
       const storedDraft = await prisma.draftProposal.findUniqueOrThrow({
         where: { id: submit.body.draftId },
       });
-      expect(storedDraft.reviewNote).toBe(secretNote);
+      expect(storedDraft.reviewNote).toBe("first approval with key [REDACTED]");
+      expect(storedDraft.reviewNote).not.toContain(secretNote);
 
       const detail = await request(app.getHttpServer())
         .get(`${draftBase()}/${submit.body.draftId}`)
@@ -987,6 +1001,626 @@ describe("Entities (integration)", () => {
       );
 
       expect(await prisma.entity.count()).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // DRAFT-FIRST UPDATE
+  // -------------------------------------------------------------------------
+
+  describe("POST /drafts/entities/:entitySlug/update", () => {
+    async function createCanonicalEntity(input?: {
+      name?: string;
+      summary?: string | null;
+      description?: string | null;
+      backstory?: string | null;
+      secrets?: string | null;
+      notes?: string | null;
+      imageUrl?: string | null;
+    }) {
+      const res = await request(app.getHttpServer())
+        .post(base())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "CHARACTER",
+          name: input?.name ?? "Draft Update Target",
+          summary: input?.summary ?? "Original summary",
+          description: input?.description ?? "Original description",
+          backstory: input?.backstory ?? "Original backstory",
+          secrets: input?.secrets ?? "Original secrets",
+          notes: input?.notes ?? "Original notes",
+          imageUrl: input?.imageUrl ?? "https://example.invalid/original.png",
+          character: { species: "Human", role: "Original role" },
+        })
+        .expect(201);
+      return res.body as {
+        id: string;
+        slug: string;
+        name: string;
+        summary: string | null;
+        description: string | null;
+        backstory: string | null;
+        secrets: string | null;
+        notes: string | null;
+        imageUrl: string | null;
+      };
+    }
+
+    it("lets DRAFT_WRITE submit an entity update draft without changing the canonical entity", async () => {
+      const canonical = await createCanonicalEntity();
+      const key = await createApiKey("DRAFT_WRITE");
+
+      const res = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({
+          patch: {
+            summary: "Proposed summary",
+            notes: "Proposed notes",
+          },
+        })
+        .expect(201);
+
+      expect(res.body).toMatchObject({
+        status: "submitted",
+        canonicalApplied: false,
+        targetId: canonical.id,
+        changedFieldCount: 2,
+      });
+      expect(res.body.draftId).toEqual(expect.any(String));
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unchanged.body).toMatchObject({
+        id: canonical.id,
+        summary: "Original summary",
+        notes: "Original notes",
+      });
+
+      const stored = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: res.body.draftId },
+      });
+      expect(stored).toMatchObject({
+        targetType: "ENTITY",
+        operation: "UPDATE",
+        status: "SUBMITTED",
+        targetId: canonical.id,
+      });
+      expect(stored.proposedData).toMatchObject({
+        entitySlug: canonical.slug,
+        patch: { summary: "Proposed summary", notes: "Proposed notes" },
+      });
+      expect(stored.previousData).toMatchObject({
+        summary: "Original summary",
+        notes: "Original notes",
+      });
+      expect(stored.validation).toMatchObject({
+        diff: [
+          expect.objectContaining({
+            field: "summary",
+            previous: "Original summary",
+            proposed: "Proposed summary",
+            changed: true,
+            conflict: false,
+          }),
+          expect.objectContaining({
+            field: "notes",
+            previous: "Original notes",
+            proposed: "Proposed notes",
+            changed: true,
+            conflict: false,
+          }),
+        ],
+      });
+    });
+
+    it("still denies canonical entity writes to DRAFT_WRITE API keys", async () => {
+      const canonical = await createCanonicalEntity();
+      const key = await createApiKey("DRAFT_WRITE");
+
+      await request(app.getHttpServer())
+        .patch(`${base()}/${canonical.slug}`)
+        .set("Authorization", `Bearer ${key.key}`)
+        .send({ summary: "Not allowed canonically" })
+        .expect(403);
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unchanged.body.summary).toBe("Original summary");
+    });
+
+    it("rejects unknown or out-of-scope update draft fields", async () => {
+      const canonical = await createCanonicalEntity();
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { tags: ["out-of-scope"] } })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { character: { role: "out-of-scope" } } })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { summary: "Allowed", unknownField: "not allowed" } })
+        .expect(400);
+    });
+
+    it("rejects no-op update draft patches", async () => {
+      const canonical = await createCanonicalEntity();
+
+      await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { summary: "Original summary" } })
+        .expect(400);
+
+      expect(await prisma.draftProposal.count()).toBe(0);
+    });
+
+    it("lists update drafts in the default review queue while preserving explicit operation filters", async () => {
+      const canonical = await createCanonicalEntity();
+      const createDraft = await request(app.getHttpServer())
+        .post(draftBase())
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          type: "LOCATION",
+          name: "Review Queue Create Draft",
+          summary: "Create draft summary",
+        })
+        .expect(201);
+      const updateDraft = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { summary: "Queued proposed summary" } })
+        .expect(201);
+
+      const defaultQueue = await request(app.getHttpServer())
+        .get(draftBase())
+        .query({ status: "SUBMITTED", limit: 10 })
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(defaultQueue.body).toMatchObject({
+        items: [
+          expect.objectContaining({
+            id: createDraft.body.draftId,
+            operation: "CREATE",
+            displayName: "Review Queue Create Draft",
+            displaySummary: "Create draft summary",
+            canonicalApplied: false,
+          }),
+          expect.objectContaining({
+            id: updateDraft.body.draftId,
+            operation: "UPDATE",
+            displayName: "Update Draft Update Target",
+            displaySummary: "Update 1 base entity field",
+            canonicalApplied: false,
+          }),
+        ],
+        page: { limit: 10, offset: 0, total: 2 },
+      });
+
+      const createOnly = await request(app.getHttpServer())
+        .get(draftBase())
+        .query({ status: "SUBMITTED", operation: "CREATE", limit: 10 })
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(createOnly.body.items).toHaveLength(1);
+      expect(createOnly.body.items[0]).toMatchObject({
+        id: createDraft.body.draftId,
+        operation: "CREATE",
+      });
+
+      const updateOnly = await request(app.getHttpServer())
+        .get(draftBase())
+        .query({ status: "SUBMITTED", operation: "UPDATE", limit: 10 })
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(updateOnly.body.items).toHaveLength(1);
+      expect(updateOnly.body.items[0]).toMatchObject({
+        id: updateDraft.body.draftId,
+        operation: "UPDATE",
+        submittedByKind: "HUMAN",
+        submittedByLabel: "test@example.com",
+        sourceKind: "MANUAL",
+      });
+    });
+
+    it("returns redacted semantic diff rows in update draft detail instead of raw JSON", async () => {
+      const rawSecret = "lrm_live_abcdefghijklmnopqrstuvwxyz012345";
+      const canonical = await createCanonicalEntity({
+        description: `Original ${rawSecret}`,
+      });
+      const submit = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          patch: {
+            description: `Proposed ${rawSecret}`,
+            imageUrl: "https://example.invalid/proposed.png",
+          },
+        })
+        .expect(201);
+
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      expect(detail.body).toMatchObject({
+        id: submit.body.draftId,
+        targetType: "ENTITY",
+        operation: "UPDATE",
+        proposed: {
+          title: "Update Draft Update Target",
+          target: {
+            id: canonical.id,
+            slugAtSubmission: canonical.slug,
+            currentSlug: canonical.slug,
+            type: "CHARACTER",
+          },
+          content: {
+            changedFieldCount: 2,
+            conflictCount: 0,
+            diff: expect.arrayContaining([
+              expect.objectContaining({
+                field: "description",
+                label: "Description",
+                previous: "Original [REDACTED]",
+                proposed: "Proposed [REDACTED]",
+                changed: true,
+                conflict: false,
+              }),
+            ]),
+          },
+        },
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(rawSecret);
+      expect(detail.body.proposed).not.toHaveProperty("patch");
+      expect(detail.body.proposed.content).not.toHaveProperty("proposedData");
+    });
+
+    it("rejects an update draft without mutating canonical content and records redacted rationale", async () => {
+      const canonical = await createCanonicalEntity();
+      const submit = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { summary: "Rejected proposed summary" } })
+        .expect(201);
+      const secretReason =
+        "reject because Bearer abcdefghijklmnopqrstuvwxyz123456";
+
+      const reject = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/reject`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ rejectionReason: secretReason })
+        .expect(200);
+
+      expect(reject.body).toMatchObject({
+        status: "rejected",
+        canonicalApplied: false,
+        rejectionReason: "reject because [REDACTED]",
+      });
+      const unchanged = await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unchanged.body.summary).toBe("Original summary");
+
+      const auditEvents = await prisma.auditEvent.findMany({
+        where: { draftId: submit.body.draftId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(auditEvents.map((event) => event.eventType)).toEqual([
+        "DRAFT_ENTITY_UPDATE_SUBMITTED",
+        "DRAFT_ENTITY_UPDATE_REJECTED",
+      ]);
+      expect(auditEvents[1]!.metadata).toMatchObject({
+        rejectionReason: "reject because [REDACTED]",
+      });
+      const detail = await request(app.getHttpServer())
+        .get(`${draftBase()}/${submit.body.draftId}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(detail.body.rejectionReason).toBe("reject because [REDACTED]");
+      expect(JSON.stringify(detail.body)).not.toContain(secretReason);
+      const storedDraft = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: submit.body.draftId },
+      });
+      expect(storedDraft.rejectionReason).toBe("reject because [REDACTED]");
+      expect(storedDraft.rejectionReason).not.toContain(secretReason);
+    });
+
+    it("approves base-field updates once, regenerates slug for name changes, and records audit diff evidence", async () => {
+      const canonical = await createCanonicalEntity({
+        name: "Name Change Target",
+      });
+      const submit = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          patch: {
+            name: "Renamed Target",
+            summary: "Updated summary",
+            secrets: "Updated secrets",
+          },
+        })
+        .expect(201);
+
+      const first = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "safe update approval" })
+        .expect(200);
+      const retry = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "do not apply twice" })
+        .expect(200);
+
+      expect(first.body).toMatchObject({
+        status: "applied",
+        canonicalApplied: true,
+        draftId: submit.body.draftId,
+        reviewNote: "safe update approval",
+        canonical: {
+          id: canonical.id,
+          name: "Renamed Target",
+          slug: "renamed-target",
+          summary: "Updated summary",
+          secrets: "Updated secrets",
+          description: "Original description",
+        },
+      });
+      expect(retry.body).toMatchObject({
+        canonical: { id: canonical.id, slug: "renamed-target" },
+        reviewNote: "safe update approval",
+      });
+      await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`${base()}/renamed-target`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+
+      const auditEvents = await prisma.auditEvent.findMany({
+        where: { draftId: submit.body.draftId },
+        orderBy: { occurredAt: "asc" },
+      });
+      expect(auditEvents.map((event) => event.eventType)).toEqual([
+        "DRAFT_ENTITY_UPDATE_SUBMITTED",
+        "DRAFT_ENTITY_UPDATE_APPLIED",
+      ]);
+      expect(auditEvents[1]).toMatchObject({
+        targetId: canonical.id,
+        targetModel: "Entity",
+        operation: "UPDATE",
+        targetType: "ENTITY",
+      });
+      expect(auditEvents[1]!.oldData).toMatchObject({
+        name: "Name Change Target",
+        summary: "Original summary",
+        secrets: "Original secrets",
+      });
+      expect(auditEvents[1]!.newData).toMatchObject({
+        name: "Renamed Target",
+        summary: "Updated summary",
+        secrets: "Updated secrets",
+      });
+      expect(auditEvents[1]!.diff).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: "name", conflict: false }),
+          expect.objectContaining({ field: "summary", conflict: false }),
+          expect.objectContaining({ field: "secrets", conflict: false }),
+        ]),
+      );
+      expect(
+        await prisma.auditEvent.count({
+          where: { draftId: submit.body.draftId },
+        }),
+      ).toBe(2);
+    });
+
+    it("marks canonical drift as APPLICATION_FAILED with ENTITY_UPDATE_CONFLICT and never applies on retry", async () => {
+      const canonical = await createCanonicalEntity();
+      const submit = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ patch: { summary: "Proposed after drift" } })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ summary: "Canonical changed independently" })
+        .expect(200);
+
+      const first = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "try stale update" })
+        .expect(409);
+      expect(first.body).toMatchObject({
+        statusCode: 409,
+        error: "Conflict",
+      });
+      expect(JSON.stringify(first.body)).toContain("ENTITY_UPDATE_CONFLICT");
+
+      const draft = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: submit.body.draftId },
+      });
+      expect(draft).toMatchObject({
+        status: "APPLICATION_FAILED",
+        failureCode: "ENTITY_UPDATE_CONFLICT",
+      });
+      expect(draft.validation).toMatchObject({
+        diff: [
+          expect.objectContaining({
+            field: "summary",
+            previous: "Original summary",
+            proposed: "Proposed after drift",
+            current: "Canonical changed independently",
+            conflict: true,
+            conflictReason: "canonical_changed",
+          }),
+        ],
+      });
+
+      const retry = await request(app.getHttpServer())
+        .post(`${draftBase()}/${submit.body.draftId}/approve`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({ reviewNote: "do not retry failed application" })
+        .expect(409);
+      expect(JSON.stringify(retry.body)).toContain("ENTITY_UPDATE_CONFLICT");
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unchanged.body.summary).toBe("Canonical changed independently");
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            draftId: submit.body.draftId,
+            eventType: "DRAFT_ENTITY_UPDATE_APPLIED",
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            draftId: submit.body.draftId,
+            eventType: "DRAFT_ENTITY_UPDATE_APPLICATION_FAILED",
+          },
+        }),
+      ).toBe(1);
+    });
+
+    it("does not overwrite a canonical field that changes during update draft application", async () => {
+      const canonical = await createCanonicalEntity({
+        name: "Atomic Apply Target",
+      });
+      const submit = await request(app.getHttpServer())
+        .post(`${draftBase()}/${canonical.slug}/update`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .send({
+          patch: {
+            name: "Atomic Apply Renamed",
+            summary: "Atomic proposed summary",
+          },
+        })
+        .expect(201);
+      const originalGenerateUniqueSlug = slugUtils.generateUniqueSlug;
+      const slugSpy = vi
+        .spyOn(slugUtils, "generateUniqueSlug")
+        .mockImplementationOnce(async (...args) => {
+          await prisma.entity.update({
+            where: { id: canonical.id },
+            data: { summary: "Concurrent canonical summary" },
+          });
+          return originalGenerateUniqueSlug(...args);
+        });
+
+      try {
+        const res = await request(app.getHttpServer())
+          .post(`${draftBase()}/${submit.body.draftId}/approve`)
+          .set("Cookie", authCookie)
+          .set("x-csrf-token", csrfToken)
+          .send({ reviewNote: "simulate concurrent canonical change" })
+          .expect(409);
+        expect(JSON.stringify(res.body)).toContain("ENTITY_UPDATE_CONFLICT");
+      } finally {
+        slugSpy.mockRestore();
+      }
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`${base()}/${canonical.slug}`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(unchanged.body).toMatchObject({
+        id: canonical.id,
+        name: "Atomic Apply Target",
+        slug: canonical.slug,
+        summary: "Concurrent canonical summary",
+      });
+
+      const draft = await prisma.draftProposal.findUniqueOrThrow({
+        where: { id: submit.body.draftId },
+      });
+      expect(draft).toMatchObject({
+        status: "APPLICATION_FAILED",
+        failureCode: "ENTITY_UPDATE_CONFLICT",
+        appliedTargetId: null,
+      });
+      expect(draft.validation).toMatchObject({
+        diff: expect.arrayContaining([
+          expect.objectContaining({
+            field: "summary",
+            previous: "Original summary",
+            proposed: "Atomic proposed summary",
+            current: "Concurrent canonical summary",
+            conflict: true,
+            conflictReason: "canonical_changed",
+          }),
+        ]),
+      });
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            draftId: submit.body.draftId,
+            eventType: "DRAFT_ENTITY_UPDATE_APPLIED",
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.auditEvent.count({
+          where: {
+            draftId: submit.body.draftId,
+            eventType: "DRAFT_ENTITY_UPDATE_APPLICATION_FAILED",
+          },
+        }),
+      ).toBe(1);
     });
   });
 
