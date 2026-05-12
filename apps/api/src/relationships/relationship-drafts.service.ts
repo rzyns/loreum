@@ -485,6 +485,12 @@ export class RelationshipDraftsService {
   private normalizeRelationshipCreateInput(
     dto: RelationshipCreateDraftInput,
   ): ProposedRelationshipCreate {
+    if (dto.label && dto.type && dto.label !== dto.type) {
+      throw new BadRequestException(
+        "Relationship draft label and type must match when both are provided",
+      );
+    }
+
     const label = dto.label ?? dto.type;
     if (!label) {
       throw new BadRequestException(
