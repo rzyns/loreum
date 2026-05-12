@@ -20,14 +20,15 @@ import type { Project } from "@loreum/types";
 
 type DraftStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "APPLIED" | "REJECTED";
 type ReviewQueueFilterStatus = "SUBMITTED" | "REJECTED" | "APPLIED";
-
-const REVIEW_QUEUE_FILTERS: Array<{
+type ReviewQueueFilter = {
   status: ReviewQueueFilterStatus;
   label: string;
   description: string;
   emptyTitle: string;
   emptyDescription: string;
-}> = [
+};
+
+const REVIEW_QUEUE_FILTERS = [
   {
     status: "SUBMITTED",
     label: "Submitted",
@@ -52,7 +53,7 @@ const REVIEW_QUEUE_FILTERS: Array<{
     emptyDescription:
       "Approved and applied entity-create drafts will appear here with their canonical target context.",
   },
-];
+] satisfies readonly [ReviewQueueFilter, ...ReviewQueueFilter[]];
 type ReviewCapability =
   | "draft:approve"
   | "draft:reject"
@@ -407,13 +408,18 @@ export default function ReviewQueuePage() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.6fr)]">
-        <section aria-label={`${activeFilter.label} drafts`} className="space-y-3">
+        <section
+          aria-label={`${activeFilter.label} drafts`}
+          className="space-y-3"
+        >
           {loadingQueue ? <QueueSkeleton /> : null}
           {!loadingQueue && orderedQueue.length === 0 && !queueError ? (
             <Card>
               <CardHeader>
                 <CardTitle>{activeFilter.emptyTitle}</CardTitle>
-                <CardDescription>{activeFilter.emptyDescription}</CardDescription>
+                <CardDescription>
+                  {activeFilter.emptyDescription}
+                </CardDescription>
               </CardHeader>
             </Card>
           ) : null}
@@ -484,7 +490,8 @@ export default function ReviewQueuePage() {
                 <CardDescription>
                   {detail.status === "SUBMITTED"
                     ? "Staged draft"
-                    : "Historical draft"} · {formatOperation(detail.operation)}{" "}
+                    : "Historical draft"}{" "}
+                  · {formatOperation(detail.operation)}{" "}
                   {formatTarget(detail.targetType)} · batch {detail.batchId}
                 </CardDescription>
                 <CardAction>
@@ -512,7 +519,10 @@ export default function ReviewQueuePage() {
                     />
                   </dl>
                   <ProposedContentPreview content={detail.proposed.content} />
-                  <WorkflowLinks links={detail.safeLinks} status={detail.status} />
+                  <WorkflowLinks
+                    links={detail.safeLinks}
+                    status={detail.status}
+                  />
                 </section>
 
                 <section className="grid gap-3 text-sm sm:grid-cols-3">
@@ -784,11 +794,13 @@ function HistoricalStateNotice({ detail }: { detail: ReviewQueueDetail }) {
   const statusLabel = detail.status.toLowerCase();
   return (
     <section className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-      <p className="font-medium text-foreground">Historical {statusLabel} draft</p>
+      <p className="font-medium text-foreground">
+        Historical {statusLabel} draft
+      </p>
       <p className="mt-1">
-        Review actions are unavailable because this draft is already {statusLabel}.
-        It remains visible here for evidence review, rationale inspection, and
-        canonical target context when available.
+        Review actions are unavailable because this draft is already{" "}
+        {statusLabel}. It remains visible here for evidence review, rationale
+        inspection, and canonical target context when available.
       </p>
     </section>
   );
