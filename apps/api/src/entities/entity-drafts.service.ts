@@ -179,11 +179,22 @@ export class EntityDraftsService {
       throw new NotFoundException("Entity draft not found");
     }
 
+    const appliedCanonical = draft.appliedTargetId
+      ? await this.prisma.entity.findFirst({
+          where: { id: draft.appliedTargetId, projectId },
+          select: { id: true, slug: true, name: true },
+        })
+      : null;
+
     return {
       ...this.toReviewSummary(draft),
       batchId: draft.batchId,
       proposed: this.toSafeProposedSummary(draft.proposedData),
-      safeLinks: this.toReviewSafeLinks(actor.projectSlug, draft),
+      safeLinks: this.toReviewSafeLinks(
+        actor.projectSlug,
+        draft,
+        appliedCanonical,
+      ),
       reviewHistory: draft.auditEvents.map((event) => ({
         id: event.id,
         eventType: event.eventType,
@@ -559,6 +570,7 @@ export class EntityDraftsService {
       id: string;
       proposedData: Prisma.JsonValue;
     },
+    appliedCanonical: { id: string; slug: string; name: string } | null,
   ) {
     const base = `/v1/projects/${projectSlug ?? ""}/drafts/entities/${draft.id}`;
     const proposed =
@@ -572,6 +584,13 @@ export class EntityDraftsService {
     const canonicalSlug =
       slug && safeSlug === slug && slugify(slug) === slug ? slug : undefined;
 
+    const appliedCanonicalSlug =
+      appliedCanonical &&
+      this.redactSafeText(appliedCanonical.slug) === appliedCanonical.slug &&
+      slugify(appliedCanonical.slug) === appliedCanonical.slug
+        ? appliedCanonical.slug
+        : undefined;
+
     return {
       review: base,
       approve: `${base}/approve`,
@@ -579,6 +598,17 @@ export class EntityDraftsService {
       proposedCanonical: canonicalSlug
         ? `/v1/projects/${projectSlug ?? ""}/entities/${canonicalSlug}`
         : null,
+      appliedCanonical:
+        appliedCanonical && appliedCanonicalSlug
+          ? {
+              id: appliedCanonical.id,
+              slug: appliedCanonicalSlug,
+              name:
+                this.redactSafeText(appliedCanonical.name) ??
+                "Redacted canonical entity",
+              href: `/v1/projects/${projectSlug ?? ""}/entities/${appliedCanonicalSlug}`,
+            }
+          : null,
     };
   }
 

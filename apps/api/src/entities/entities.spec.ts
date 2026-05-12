@@ -695,7 +695,30 @@ describe("Entities (integration)", () => {
         status: "APPLIED",
         reviewNote: "approved for canon",
         rejectionReason: null,
+        safeLinks: {
+          appliedCanonical: {
+            id: res.body.canonical.id,
+            slug: "staged-valley",
+            name: "Staged Valley",
+            href: `/v1/projects/${projectSlug}/entities/staged-valley`,
+          },
+        },
       });
+      const appliedList = await request(app.getHttpServer())
+        .get(`${draftBase()}?status=APPLIED`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(appliedList.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: submit.body.draftId, status: "APPLIED" }),
+        ]),
+      );
+      expect(
+        appliedList.body.items.every(
+          (item: { status: string }) => item.status === "APPLIED",
+        ),
+      ).toBe(true);
       expect(detail.body.reviewHistory).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -752,7 +775,26 @@ describe("Entities (integration)", () => {
         status: "REJECTED",
         reviewNote: null,
         rejectionReason: "needs more lore",
+        safeLinks: { appliedCanonical: null },
       });
+      const rejectedList = await request(app.getHttpServer())
+        .get(`${draftBase()}?status=REJECTED`)
+        .set("Cookie", authCookie)
+        .set("x-csrf-token", csrfToken)
+        .expect(200);
+      expect(rejectedList.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: submit.body.draftId,
+            status: "REJECTED",
+          }),
+        ]),
+      );
+      expect(
+        rejectedList.body.items.every(
+          (item: { status: string }) => item.status === "REJECTED",
+        ),
+      ).toBe(true);
       expect(detail.body.reviewHistory).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

@@ -19,6 +19,40 @@ import { useAuth } from "@/lib/auth-context";
 import type { Project } from "@loreum/types";
 
 type DraftStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "APPLIED" | "REJECTED";
+type ReviewQueueFilterStatus = "SUBMITTED" | "REJECTED" | "APPLIED";
+
+const REVIEW_QUEUE_FILTERS: Array<{
+  status: ReviewQueueFilterStatus;
+  label: string;
+  description: string;
+  emptyTitle: string;
+  emptyDescription: string;
+}> = [
+  {
+    status: "SUBMITTED",
+    label: "Submitted",
+    description: "Drafts waiting for review",
+    emptyTitle: "No submitted drafts",
+    emptyDescription:
+      "New entity-create proposals submitted for review will appear here.",
+  },
+  {
+    status: "REJECTED",
+    label: "Rejected",
+    description: "Historical drafts rejected without canonical changes",
+    emptyTitle: "No rejected drafts",
+    emptyDescription:
+      "Rejected entity-create drafts will remain available here for historical inspection.",
+  },
+  {
+    status: "APPLIED",
+    label: "Applied",
+    description: "Historical drafts already applied to canonical content",
+    emptyTitle: "No applied drafts",
+    emptyDescription:
+      "Approved and applied entity-create drafts will appear here with their canonical target context.",
+  },
+];
 type ReviewCapability =
   | "draft:approve"
   | "draft:reject"
@@ -96,6 +130,12 @@ interface ReviewQueueDetail extends ReviewQueueSummary {
     approve: string;
     reject: string;
     proposedCanonical: string | null;
+    appliedCanonical: {
+      id: string;
+      slug: string;
+      name: string;
+      href: string;
+    } | null;
   };
   reviewHistory: ReviewHistoryEvent[];
 }
@@ -116,6 +156,8 @@ export default function ReviewQueuePage() {
   const [project, setProject] = useState<Project | null>(null);
   const [queue, setQueue] = useState<ReviewQueueSummary[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] =
+    useState<ReviewQueueFilterStatus>("SUBMITTED");
   const [detail, setDetail] = useState<ReviewQueueDetail | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
@@ -139,6 +181,13 @@ export default function ReviewQueuePage() {
     localCapabilities.includes("draft:reject") &&
     localCapabilities.includes("canonical:apply_draft");
 
+  const activeFilter = useMemo(
+    () =>
+      REVIEW_QUEUE_FILTERS.find((filter) => filter.status === statusFilter) ??
+      REVIEW_QUEUE_FILTERS[0],
+    [statusFilter],
+  );
+
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
     setQueueError(null);
@@ -146,7 +195,7 @@ export default function ReviewQueuePage() {
       const [projectResponse, reviewQueue] = await Promise.all([
         api<Project>(`/projects/${params.slug}`),
         api<ReviewQueueResponse>(
-          `/projects/${params.slug}/drafts/entities?status=SUBMITTED&targetType=ENTITY&operation=CREATE`,
+          `/projects/${params.slug}/drafts/entities?status=${statusFilter}&targetType=ENTITY&operation=CREATE`,
         ),
       ]);
       setProject(projectResponse);
@@ -165,7 +214,7 @@ export default function ReviewQueuePage() {
     } finally {
       setLoadingQueue(false);
     }
-  }, [params.slug]);
+  }, [params.slug, statusFilter]);
 
   useEffect(() => {
     void loadQueue();
@@ -211,6 +260,13 @@ export default function ReviewQueuePage() {
     await loadQueue();
     setSelectedDraftId((current) => (current === detail?.id ? null : current));
     setDetail(null);
+  };
+
+  const changeStatusFilter = (nextStatus: ReviewQueueFilterStatus) => {
+    setStatusFilter(nextStatus);
+    setActionResult(null);
+    setDetail(null);
+    setSelectedDraftId(null);
   };
 
   const selectDraft = (draftId: string) => {
@@ -278,11 +334,12 @@ export default function ReviewQueuePage() {
           <div>
             <h1>Review queue</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Review submitted entity-create drafts before they become canonical
-              world content. Capable project actors can review and apply staged
-              proposals; proposed values below are draft data, not canonical
-              content. Actor and source labels are shown only as audit
-              provenance.
+              Review submitted and historical entity-create drafts before and
+              after review decisions. Capable project actors can review and
+              apply submitted proposals; terminal rejected/applied drafts stay
+              inspectable as historical evidence. Proposed values below are
+              draft data, not canonical content. Actor and source labels are
+              shown only as audit provenance.
             </p>
           </div>
           <Button variant="outline" onClick={() => void loadQueue()}>
@@ -320,16 +377,43 @@ export default function ReviewQueuePage() {
         </section>
       ) : null}
 
+      <section
+        className="rounded-lg border bg-muted/30 p-3"
+        aria-label="Review queue status filters"
+      >
+        <div className="grid gap-2 md:grid-cols-3">
+          {REVIEW_QUEUE_FILTERS.map((filter) => (
+            <button
+              key={filter.status}
+              type="button"
+              onClick={() => changeStatusFilter(filter.status)}
+              aria-pressed={statusFilter === filter.status}
+              className={`rounded-lg border p-3 text-left text-sm transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                statusFilter === filter.status
+                  ? "border-foreground/30 bg-background shadow-sm"
+                  : "border-transparent bg-transparent"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2 font-medium">
+                {filter.label}
+                <StatusPill status={filter.status} />
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {filter.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.6fr)]">
-        <section aria-label="Submitted drafts" className="space-y-3">
+        <section aria-label={`${activeFilter.label} drafts`} className="space-y-3">
           {loadingQueue ? <QueueSkeleton /> : null}
           {!loadingQueue && orderedQueue.length === 0 && !queueError ? (
             <Card>
               <CardHeader>
-                <CardTitle>No submitted drafts</CardTitle>
-                <CardDescription>
-                  New entity proposals submitted for review will appear here.
-                </CardDescription>
+                <CardTitle>{activeFilter.emptyTitle}</CardTitle>
+                <CardDescription>{activeFilter.emptyDescription}</CardDescription>
               </CardHeader>
             </Card>
           ) : null}
@@ -359,8 +443,13 @@ export default function ReviewQueuePage() {
                   {draft.displaySummary || "No staged summary provided."}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Submitted by {draft.submittedByLabel} ·{" "}
-                  {formatDate(draft.createdAt)}
+                  {draft.status === "SUBMITTED" ? "Submitted" : "Updated"} by{" "}
+                  {draft.submittedByLabel} ·{" "}
+                  {formatDate(
+                    draft.status === "SUBMITTED"
+                      ? draft.createdAt
+                      : draft.updatedAt,
+                  )}
                 </p>
               </article>
             </button>
@@ -393,7 +482,9 @@ export default function ReviewQueuePage() {
               <CardHeader>
                 <CardTitle>{detail.displayName}</CardTitle>
                 <CardDescription>
-                  Staged draft · {formatOperation(detail.operation)}{" "}
+                  {detail.status === "SUBMITTED"
+                    ? "Staged draft"
+                    : "Historical draft"} · {formatOperation(detail.operation)}{" "}
                   {formatTarget(detail.targetType)} · batch {detail.batchId}
                 </CardDescription>
                 <CardAction>
@@ -421,7 +512,7 @@ export default function ReviewQueuePage() {
                     />
                   </dl>
                   <ProposedContentPreview content={detail.proposed.content} />
-                  <WorkflowLinks links={detail.safeLinks} />
+                  <WorkflowLinks links={detail.safeLinks} status={detail.status} />
                 </section>
 
                 <section className="grid gap-3 text-sm sm:grid-cols-3">
@@ -496,7 +587,9 @@ export default function ReviewQueuePage() {
                   </section>
                 ) : null}
 
-                {canReviewActions && detail.status === "SUBMITTED" ? (
+                {detail.status !== "SUBMITTED" ? (
+                  <HistoricalStateNotice detail={detail} />
+                ) : canReviewActions ? (
                   <section className="space-y-4 rounded-lg border p-4">
                     <h2 className="text-base font-medium">Review actions</h2>
                     <div className="grid gap-4 md:grid-cols-2">
@@ -687,7 +780,27 @@ function ProposedContentPreview({
   );
 }
 
-function WorkflowLinks({ links }: { links?: ReviewQueueDetail["safeLinks"] }) {
+function HistoricalStateNotice({ detail }: { detail: ReviewQueueDetail }) {
+  const statusLabel = detail.status.toLowerCase();
+  return (
+    <section className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+      <p className="font-medium text-foreground">Historical {statusLabel} draft</p>
+      <p className="mt-1">
+        Review actions are unavailable because this draft is already {statusLabel}.
+        It remains visible here for evidence review, rationale inspection, and
+        canonical target context when available.
+      </p>
+    </section>
+  );
+}
+
+function WorkflowLinks({
+  links,
+  status,
+}: {
+  links?: ReviewQueueDetail["safeLinks"];
+  status: DraftStatus;
+}) {
   if (!links) return null;
   return (
     <section className="mt-4 rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
@@ -696,9 +809,24 @@ function WorkflowLinks({ links }: { links?: ReviewQueueDetail["safeLinks"] }) {
       </h3>
       <dl className="grid gap-2 sm:grid-cols-2">
         <Field label="Review detail" value={links.review} />
-        <Field label="Approve/apply" value={links.approve} />
-        <Field label="Reject" value={links.reject} />
-        <Field label="Canonical target" value={links.proposedCanonical} />
+        {status === "SUBMITTED" ? (
+          <>
+            <Field label="Approve/apply" value={links.approve} />
+            <Field label="Reject" value={links.reject} />
+          </>
+        ) : null}
+        <Field
+          label={
+            status === "APPLIED"
+              ? "Applied canonical target"
+              : "Proposed canonical target"
+          }
+          value={
+            links.appliedCanonical
+              ? `${links.appliedCanonical.name} (${links.appliedCanonical.href})`
+              : links.proposedCanonical
+          }
+        />
       </dl>
     </section>
   );

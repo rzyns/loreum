@@ -40,7 +40,14 @@ test("review queue page uses the reviewed entity draft API contract", async () =
 
   assert.match(
     page,
-    /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=SUBMITTED/,
+    /ReviewQueueFilterStatus = "SUBMITTED" \| "REJECTED" \| "APPLIED"/,
+  );
+  assert.match(page, /REVIEW_QUEUE_FILTERS/);
+  assert.match(page, /No rejected drafts/);
+  assert.match(page, /No applied drafts/);
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=\$\{statusFilter\}/,
   );
   assert.match(
     page,
@@ -55,7 +62,6 @@ test("review queue page uses the reviewed entity draft API contract", async () =
     /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/reject/,
   );
 });
-
 test("review queue page labels staged draft data and never presents it as canonical", async () => {
   const page = await source(reviewPage);
 
@@ -66,7 +72,7 @@ test("review queue page labels staged draft data and never presents it as canoni
   assert.match(page, /safeLinks/);
   assert.match(
     page,
-    /Actor and source labels are shown only as audit\s+provenance/,
+    /Actor and source labels are\s+shown only as audit\s+provenance/,
   );
   assert.match(page, /Approve and apply/);
   assert.match(page, /Reject staged draft/);
@@ -84,6 +90,17 @@ test("review queue action affordances are capability-aware before backend enforc
   assert.match(page, /canonical:apply_draft/);
   assert.match(page, /canReviewActions/);
   assert.match(page, /project-scoped\s+capabilities on every review action/);
+});
+
+test("review queue hides review actions for historical terminal drafts", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(page, /HistoricalStateNotice/);
+  assert.match(page, /detail\.status !== "SUBMITTED"/);
+  assert.match(page, /Review actions are unavailable because this draft is already/);
+  assert.match(page, /status === "SUBMITTED" \? \(/);
+  assert.match(page, /Applied canonical target/);
+  assert.match(page, /appliedCanonical/);
 });
 
 test("review queue action result remains visible after list refresh clears detail", async () => {
