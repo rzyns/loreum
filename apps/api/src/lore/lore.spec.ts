@@ -147,6 +147,58 @@ describe("Lore (integration)", () => {
     expect(detail.body).not.toHaveProperty("proposedData");
   });
 
+  it("redacts secret-shaped tag names and entity slugs from lore draft review previews", async () => {
+    const draftWriteKey = await createApiKey("DRAFT_WRITE");
+    const reviewerKey = await createApiKey("READ_ONLY");
+    const project = await prisma.project.findUniqueOrThrow({
+      where: { slug: projectSlug },
+      select: { id: true },
+    });
+    const secretEntitySlug = "lrm_1234567890abcdefghijklmnop";
+    const secretTagName = "sk-proj-1234567890abcdefghijklmnop";
+    await prisma.entity.create({
+      data: {
+        projectId: project.id,
+        type: "LOCATION",
+        name: "Secret Slug Location",
+        slug: secretEntitySlug,
+      },
+    });
+    await prisma.tag.create({
+      data: { projectId: project.id, name: secretTagName, color: "#222222" },
+    });
+
+    const submitted = await request(app.getHttpServer())
+      .post(draftBase())
+      .set(bearer(draftWriteKey))
+      .send({
+        title: "Secret Reference Lore",
+        content: "Plain content",
+        entitySlugs: [secretEntitySlug],
+        tags: [secretTagName],
+      })
+      .expect(201);
+
+    const listed = await request(app.getHttpServer())
+      .get(draftBase())
+      .set(bearer(reviewerKey))
+      .expect(200);
+    const detail = await request(app.getHttpServer())
+      .get(`${draftBase()}/${submitted.body.draftId}`)
+      .set("Cookie", authCookie)
+      .set("x-csrf-token", csrfToken)
+      .expect(200);
+
+    expect(listed.body[0].proposed.content.entitySlugs).toEqual(["[REDACTED]"]);
+    expect(listed.body[0].proposed.content.tags).toEqual(["[REDACTED]"]);
+    expect(detail.body.proposed.content.entitySlugs).toEqual(["[REDACTED]"]);
+    expect(detail.body.proposed.content.tags).toEqual(["[REDACTED]"]);
+    expect(JSON.stringify(listed.body)).not.toContain(secretEntitySlug);
+    expect(JSON.stringify(listed.body)).not.toContain(secretTagName);
+    expect(JSON.stringify(detail.body)).not.toContain(secretEntitySlug);
+    expect(JSON.stringify(detail.body)).not.toContain(secretTagName);
+  });
+
   it("lets reviewers discover, reject, and approve lore article drafts while applying references at approval time", async () => {
     const draftWriteKey = await createApiKey("DRAFT_WRITE");
     const reviewerKey = await createApiKey("READ_ONLY");
