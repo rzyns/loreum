@@ -31,12 +31,17 @@ function parseBoolean(value: string | undefined, defaultValue: boolean) {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
-const DEFAULT_HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>(["create_entity"]);
+const DEFAULT_HTTP_WRITE_ALLOWLIST = new Set<WriteToolName>([
+  "create_entity",
+  "submit_entity_update_draft",
+  "submit_relationship_draft",
+  "submit_lore_article_draft",
+]);
 
 function httpWriteAllowlist(_env: NodeJS.ProcessEnv) {
-  // Remote HTTP write discovery stays draft-first: create_entity submits a review
-  // draft, while update_entity/create_relationship/create_lore_article still call
-  // canonical mutation endpoints and must remain hidden until draft paths exist.
+  // Remote HTTP write discovery stays draft-first and explicit: every exposed
+  // write tool submits a review draft only, and operators still have to opt in
+  // with MCP_ENABLE_WRITES plus MCP_WRITE_TOOLS instead of enabling all writes.
   return DEFAULT_HTTP_WRITE_ALLOWLIST;
 }
 

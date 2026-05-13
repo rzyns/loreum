@@ -9,9 +9,9 @@ type ToolServer = Pick<McpServer, "registerTool" | "resource">;
 
 export const WRITE_TOOL_NAMES = [
   "create_entity",
-  "update_entity",
-  "create_relationship",
-  "create_lore_article",
+  "submit_entity_update_draft",
+  "submit_relationship_draft",
+  "submit_lore_article_draft",
 ] as const;
 
 export type WriteToolName = (typeof WRITE_TOOL_NAMES)[number];
@@ -300,7 +300,7 @@ function buildEntityAffordance<T>(params: {
   nextActions.push({
     label: "Link related lore or relationships",
     kind: "link",
-    tool: "create_relationship",
+    tool: "submit_relationship_draft",
   });
 
   return {
@@ -365,6 +365,61 @@ function buildDraftEntityAffordance<T>(params: {
         kind: "review",
         href: reviewQueue,
         note: "This create_entity call submitted a draft only; it did not create or mutate a canonical entity.",
+      },
+    ],
+  };
+}
+
+function buildDraftSubmissionAffordance<T>(params: {
+  projectSlug: string;
+  record: T;
+  contentType: ContentType;
+  displayType: string;
+  draftCollection: "entities" | "relationships" | "lore-articles";
+  toolName: string;
+  canonicalNoun: string;
+}): WriteAffordanceResponse<T> {
+  const record = asRecord(params.record);
+  const project = pathSegment(params.projectSlug);
+  const draftId = stringField(record, "draftId");
+  const batchId = stringField(record, "batchId");
+  const status = stringField(record, "status");
+  const canonicalApplied = record.canonicalApplied === true;
+  const proposedSlug = stringField(record, "proposedSlug");
+  const title =
+    stringField(record, "displayName") ??
+    stringField(record, "title") ??
+    stringField(record, "name");
+  const reviewQueue = `/projects/${project}/drafts`;
+  const draftApi = draftId
+    ? `/projects/${project}/drafts/${params.draftCollection}/${pathSegment(
+        draftId,
+      )}`
+    : undefined;
+
+  return {
+    ok: true,
+    operation: "submit_draft",
+    contentType: params.contentType,
+    displayType: params.displayType,
+    projectSlug: params.projectSlug,
+    draftId,
+    batchId,
+    status,
+    canonicalApplied,
+    proposedSlug,
+    title,
+    record: params.record,
+    links: {
+      reviewQueue,
+      draftApi,
+    },
+    nextActions: [
+      {
+        label: `Review staged ${params.displayType} draft before canonical application`,
+        kind: "review",
+        href: reviewQueue,
+        note: `This ${params.toolName} call submitted a draft only; it did not create or mutate ${params.canonicalNoun}.`,
       },
     ],
   };
@@ -843,7 +898,7 @@ export function registerTools(
       "create_entity",
       {
         description:
-          "Submit a staged entity draft for project review; this does not create or mutate a canonical entity until an authorized reviewer approves and applies it",
+          "Submit a staged entity draft for project review. Despite the compatibility name, this does not create or mutate canonical content on submit; an authorized reviewer must approve/apply the draft before canonical content changes, and rejection preserves the draft as non-canonical evidence.",
         inputSchema: {
           projectSlug: z.string(),
           type: z.enum(["CHARACTER", "LOCATION", "ORGANIZATION", "ITEM"]),
@@ -872,76 +927,87 @@ export function registerTools(
     );
   }
 
-  if (writeToolIsAllowed(options, "update_entity")) {
+  if (writeToolIsAllowed(options, "submit_entity_update_draft")) {
     server.registerTool(
-      "update_entity",
+      "submit_entity_update_draft",
       {
         description:
-          "Update an existing entity and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
+          "Submit a staged update draft for an existing entity. This does not create or mutate canonical content on submit; an authorized reviewer must approve/apply the draft before canonical content changes, and conflicts or rejection preserve the draft as non-applied evidence.",
         inputSchema: {
           projectSlug: z.string(),
           entitySlug: z.string(),
-          updates: z.record(z.string(), z.any()),
+          patch: z.record(z.string(), z.any()),
         },
       },
-      async ({ projectSlug, entitySlug, updates }) => {
-        const entity = await api(
-          `/projects/${projectSlug}/entities/${entitySlug}`,
+      async ({ projectSlug, entitySlug, patch }) => {
+        const draft = await api(
+          `/projects/${projectSlug}/drafts/entities/${entitySlug}/update`,
           {
-            method: "PATCH",
-            body: JSON.stringify(updates),
+            method: "POST",
+            body: JSON.stringify({ patch }),
           },
         );
         return jsonContent(
-          buildEntityAffordance({
-            operation: "update",
+          buildDraftSubmissionAffordance({
             projectSlug,
-            record: entity,
-            previousSlug: entitySlug,
+            record: draft,
+            contentType: "entity",
+            displayType: "Entity update",
+            draftCollection: "entities",
+            toolName: "submit_entity_update_draft",
+            canonicalNoun: "a canonical entity",
           }),
         );
       },
     );
   }
 
-  if (writeToolIsAllowed(options, "create_relationship")) {
+  if (writeToolIsAllowed(options, "submit_relationship_draft")) {
     server.registerTool(
-      "create_relationship",
+      "submit_relationship_draft",
       {
         description:
-          "Create a relationship between two entities and return the record plus list-only admin/public affordances, visibility rationale, and next actions",
+          "Submit a staged relationship draft for project review. This does not create or mutate canonical content on submit; an authorized reviewer must approve/apply the draft before canonical content changes, and rejection preserves the draft as non-canonical evidence.",
         inputSchema: {
           projectSlug: z.string(),
           sourceEntitySlug: z.string(),
           targetEntitySlug: z.string(),
-          type: z.string(),
+          type: z.string().optional(),
           label: z.string().optional(),
+          description: z.string().optional(),
           metadata: z.record(z.string(), z.any()).optional(),
           bidirectional: z.boolean().optional(),
         },
       },
       async ({ projectSlug, ...data }) => {
-        const rel = await api(`/projects/${projectSlug}/relationships`, {
-          method: "POST",
-          body: JSON.stringify(data),
-        });
+        const draft = await api(
+          `/projects/${projectSlug}/drafts/relationships`,
+          {
+            method: "POST",
+            body: JSON.stringify(data),
+          },
+        );
         return jsonContent(
-          buildRelationshipAffordance({
-            operation: "create",
+          buildDraftSubmissionAffordance({
             projectSlug,
-            record: rel,
+            record: draft,
+            contentType: "relationship",
+            displayType: "Relationship",
+            draftCollection: "relationships",
+            toolName: "submit_relationship_draft",
+            canonicalNoun: "a canonical relationship",
           }),
         );
       },
     );
   }
 
-  if (writeToolIsAllowed(options, "create_lore_article")) {
+  if (writeToolIsAllowed(options, "submit_lore_article_draft")) {
     server.registerTool(
-      "create_lore_article",
+      "submit_lore_article_draft",
       {
         description:
-          "Create a lore article linked to entities and return the record plus post-write admin/public route affordances, visibility rationale, and next actions",
+          "Submit a staged lore article draft for project review. This does not create or mutate canonical content on submit; an authorized reviewer must approve/apply the draft before canonical content changes, and rejection preserves the draft as non-canonical evidence.",
         inputSchema: {
           projectSlug: z.string(),
           title: z.string(),
@@ -955,15 +1021,22 @@ export function registerTools(
         },
       },
       async ({ projectSlug, ...data }) => {
-        const article = await api(`/projects/${projectSlug}/lore`, {
-          method: "POST",
-          body: JSON.stringify(data),
-        });
+        const draft = await api(
+          `/projects/${projectSlug}/drafts/lore-articles`,
+          {
+            method: "POST",
+            body: JSON.stringify(data),
+          },
+        );
         return jsonContent(
-          buildLoreArticleAffordance({
-            operation: "create",
+          buildDraftSubmissionAffordance({
             projectSlug,
-            record: article,
+            record: draft,
+            contentType: "lore_article",
+            displayType: "Lore article",
+            draftCollection: "lore-articles",
+            toolName: "submit_lore_article_draft",
+            canonicalNoun: "a canonical lore article",
           }),
         );
       },

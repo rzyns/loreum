@@ -22,9 +22,9 @@ test("configFromEnv defaults to stdio with read-write tools", () => {
     readOnly: false,
     writeTools: [
       "create_entity",
-      "update_entity",
-      "create_relationship",
-      "create_lore_article",
+      "submit_entity_update_draft",
+      "submit_relationship_draft",
+      "submit_lore_article_draft",
     ],
   });
 });
@@ -62,13 +62,14 @@ test("configFromEnv does not expose HTTP write tools from MCP_READ_ONLY=false al
   );
 });
 
-test("configFromEnv requires explicit HTTP write opt-in and allowlist", () => {
+test("configFromEnv requires explicit HTTP write opt-in and exposes only safe draft allowlist names", () => {
   assert.deepEqual(
     configFromEnv({
       MCP_TRANSPORT: "http",
       MCP_HTTP_AUTH_TOKEN: "secret",
       MCP_ENABLE_WRITES: "true",
-      MCP_WRITE_TOOLS: "create_entity,update_entity",
+      MCP_WRITE_TOOLS:
+        "create_entity,update_entity,submit_entity_update_draft,create_relationship,submit_relationship_draft,create_lore_article,submit_lore_article_draft",
     }),
     {
       transport: "http",
@@ -76,7 +77,12 @@ test("configFromEnv requires explicit HTTP write opt-in and allowlist", () => {
       port: 3022,
       httpAuthToken: "secret",
       readOnly: false,
-      writeTools: ["create_entity"],
+      writeTools: [
+        "create_entity",
+        "submit_entity_update_draft",
+        "submit_relationship_draft",
+        "submit_lore_article_draft",
+      ],
     },
   );
 });
@@ -162,24 +168,31 @@ test("HTTP mode with MCP_READ_ONLY=false alone still excludes mutation tools", a
   });
 
   assert.equal(toolNames.includes("create_entity"), false);
+  assert.equal(toolNames.includes("submit_entity_update_draft"), false);
+  assert.equal(toolNames.includes("submit_relationship_draft"), false);
+  assert.equal(toolNames.includes("submit_lore_article_draft"), false);
   assert.equal(toolNames.includes("update_entity"), false);
   assert.equal(toolNames.includes("create_relationship"), false);
   assert.equal(toolNames.includes("create_lore_article"), false);
 });
 
-test("HTTP mode exposes only explicitly allowlisted create_entity write tool by default", async () => {
+test("HTTP mode exposes only explicitly requested safe draft write tools", async () => {
   const toolNames = await listHttpToolNames({
     ...configFromEnv({
       MCP_TRANSPORT: "http",
       MCP_HOST: "127.0.0.1",
       MCP_HTTP_AUTH_TOKEN: "secret",
       MCP_ENABLE_WRITES: "true",
-      MCP_WRITE_TOOLS: "create_entity,update_entity",
+      MCP_WRITE_TOOLS:
+        "create_entity,update_entity,submit_entity_update_draft,create_relationship,submit_relationship_draft,create_lore_article,submit_lore_article_draft",
     }),
     port: 0,
   });
 
   assert.equal(toolNames.includes("create_entity"), true);
+  assert.equal(toolNames.includes("submit_entity_update_draft"), true);
+  assert.equal(toolNames.includes("submit_relationship_draft"), true);
+  assert.equal(toolNames.includes("submit_lore_article_draft"), true);
   assert.equal(toolNames.includes("update_entity"), false);
   assert.equal(toolNames.includes("create_relationship"), false);
   assert.equal(toolNames.includes("create_lore_article"), false);
@@ -200,6 +213,9 @@ test("HTTP mode keeps unsafe canonical write tools hidden even when legacy all-w
   });
 
   assert.equal(toolNames.includes("create_entity"), true);
+  assert.equal(toolNames.includes("submit_entity_update_draft"), false);
+  assert.equal(toolNames.includes("submit_relationship_draft"), false);
+  assert.equal(toolNames.includes("submit_lore_article_draft"), false);
   assert.equal(toolNames.includes("update_entity"), false);
   assert.equal(toolNames.includes("create_relationship"), false);
   assert.equal(toolNames.includes("create_lore_article"), false);
@@ -250,6 +266,9 @@ test("HTTP mode exposes health, rejects unauthenticated MCP requests, and lists 
       assert.equal(toolNames.length, 20);
       assert.equal(toolNames.includes("list_projects"), true);
       assert.equal(toolNames.includes("create_entity"), false);
+      assert.equal(toolNames.includes("submit_entity_update_draft"), false);
+      assert.equal(toolNames.includes("submit_relationship_draft"), false);
+      assert.equal(toolNames.includes("submit_lore_article_draft"), false);
       assert.equal(toolNames.includes("update_entity"), false);
       assert.equal(toolNames.includes("create_relationship"), false);
       assert.equal(toolNames.includes("create_lore_article"), false);

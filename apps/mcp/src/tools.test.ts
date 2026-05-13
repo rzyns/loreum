@@ -79,6 +79,16 @@ function assertNoWorldHrefs(value: unknown) {
   );
 }
 
+function assertDraftFirstDescription(description: string | undefined) {
+  assert.match(description ?? "", /staged .*draft/i);
+  assert.match(
+    description ?? "",
+    /does not create or mutate canonical content on submit/i,
+  );
+  assert.match(description ?? "", /approve\/apply/i);
+  assert.match(description ?? "", /rejection|conflicts/i);
+}
+
 test("registerTools registers all existing MCP tools and resources", () => {
   const { server, registeredTools, registeredResources } = createFakeServer();
   const { api } = createApi({});
@@ -107,9 +117,9 @@ test("registerTools registers all existing MCP tools and resources", () => {
     "list_scenes_by_chapter",
     "get_entity_types",
     "create_entity",
-    "update_entity",
-    "create_relationship",
-    "create_lore_article",
+    "submit_entity_update_draft",
+    "submit_relationship_draft",
+    "submit_lore_article_draft",
   ]);
   assert.deepEqual(Array.from(registeredResources.keys()), [
     "project_overview",
@@ -162,9 +172,9 @@ test("registerTools exposes only explicitly allowlisted mutation tools", () => {
     Array.from(registeredTools.keys()).filter((name) =>
       [
         "create_entity",
-        "update_entity",
-        "create_relationship",
-        "create_lore_article",
+        "submit_entity_update_draft",
+        "submit_relationship_draft",
+        "submit_lore_article_draft",
       ].includes(name),
     ),
     ["create_entity"],
@@ -182,13 +192,13 @@ test("registerTools ignores unknown write-tool allowlist entries", () => {
 
   assert.equal(registeredTools.has("create_entity"), true);
   assert.equal(registeredTools.has("delete_everything"), false);
-  assert.equal(registeredTools.has("update_entity"), false);
-  assert.equal(registeredTools.has("create_relationship"), false);
-  assert.equal(registeredTools.has("create_lore_article"), false);
+  assert.equal(registeredTools.has("submit_entity_update_draft"), false);
+  assert.equal(registeredTools.has("submit_relationship_draft"), false);
+  assert.equal(registeredTools.has("submit_lore_article_draft"), false);
 });
 
 test("create_entity submits a draft and returns staged/not-canonical wording", async () => {
-  const { server, registeredTools } = createFakeServer();
+  const { server, registeredTools, registeredToolSpecs } = createFakeServer();
   const draft = {
     draftId: "draft_1",
     batchId: "batch_1",
@@ -207,6 +217,10 @@ test("create_entity submits a draft and returns staged/not-canonical wording", a
 
   const createEntity = registeredTools.get("create_entity");
   assert.ok(createEntity, "create_entity handler should be registered");
+  const spec = registeredToolSpecs.get("create_entity") as {
+    description?: string;
+  };
+  assertDraftFirstDescription(spec.description);
 
   const result = await createEntity({
     projectSlug: "test world",
@@ -252,203 +266,153 @@ test("create_entity submits a draft and returns staged/not-canonical wording", a
   });
 });
 
-test("update_entity routes ITEM affordances through the returned item type slug", async () => {
-  const { server, registeredTools } = createFakeServer();
-  const record = {
-    id: "ent_2",
-    type: "ITEM",
-    slug: "crystal-key",
-    name: "Crystal Key",
-    item: { itemType: { slug: "weapons", name: "Weapons" } },
+test("submit_entity_update_draft submits an entity-update review draft without canonical mutation", async () => {
+  const { server, registeredTools, registeredToolSpecs } = createFakeServer();
+  const draft = {
+    draftId: "draft_update_1",
+    batchId: "batch_1",
+    status: "submitted",
+    canonicalApplied: false,
+    displayName: "Update Crystal Key",
   };
-  const { api } = createApi(record);
+  const { api, apiCalls } = createApi(draft);
 
-  registerTools(server, api, { writeTools: ["update_entity"] });
+  registerTools(server, api, { writeTools: ["submit_entity_update_draft"] });
 
-  const updateEntity = registeredTools.get("update_entity");
-  assert.ok(updateEntity, "update_entity handler should be registered");
+  const submitEntityUpdateDraft = registeredTools.get(
+    "submit_entity_update_draft",
+  );
+  assert.ok(
+    submitEntityUpdateDraft,
+    "submit_entity_update_draft handler should be registered",
+  );
+  const spec = registeredToolSpecs.get("submit_entity_update_draft") as {
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+  };
+  assertDraftFirstDescription(spec.description);
+  assert.ok(spec.inputSchema?.patch, "schema should expose patch");
 
   const envelope = parseJsonContent(
-    await updateEntity({
+    await submitEntityUpdateDraft({
       projectSlug: "demo",
-      entitySlug: "old-key",
-      updates: { name: "Crystal Key" },
+      entitySlug: "crystal-key",
+      patch: { summary: "Updated summary" },
     }),
   );
 
-  assert.equal(envelope.operation, "update");
-  assert.equal(envelope.displayType, "Item");
-  assert.equal(envelope.slug, "crystal-key");
-  assert.equal(
-    envelope.links.admin,
-    "/projects/demo/entities/weapons/crystal-key",
-  );
-  assert.equal(
-    envelope.links.previousAdmin,
-    "/projects/demo/entities/weapons/old-key",
-  );
-  assert.equal(envelope.links.list, "/projects/demo/entities/weapons");
-  assert.equal(envelope.links.public, undefined);
-  assert.deepEqual(envelope.visibility, {
-    publicReadable: "unknown",
-    reason:
-      "Project visibility was not returned with the write response; verify public readability before sharing public links.",
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo/drafts/entities/crystal-key/update",
+      options: {
+        method: "POST",
+        body: JSON.stringify({ patch: { summary: "Updated summary" } }),
+      },
+    },
+  ]);
+  assert.equal(envelope.operation, "submit_draft");
+  assert.equal(envelope.contentType, "entity");
+  assert.equal(envelope.displayType, "Entity update");
+  assert.equal(envelope.canonicalApplied, false);
+  assert.deepEqual(envelope.links, {
+    reviewQueue: "/projects/demo/drafts",
+    draftApi: "/projects/demo/drafts/entities/draft_update_1",
   });
-  assert.ok(
-    envelope.nextActions.some((action: { note?: string }) =>
-      action.note?.includes("slug changed"),
-    ),
+  assert.equal(
+    envelope.nextActions[0].note,
+    "This submit_entity_update_draft call submitted a draft only; it did not create or mutate a canonical entity.",
   );
 });
 
-test("update_entity falls back to the project entity index when an ITEM type slug is missing", async () => {
-  const { server, registeredTools } = createFakeServer();
-  const record = {
-    id: "ent_2",
-    type: "ITEM",
-    slug: "crystal-key",
-    name: "Crystal Key",
+test("submit_relationship_draft submits a relationship review draft without canonical mutation", async () => {
+  const { server, registeredTools, registeredToolSpecs } = createFakeServer();
+  const draft = {
+    draftId: "draft_rel_1",
+    batchId: "batch_1",
+    status: "submitted",
+    canonicalApplied: false,
+    displayName: "Ari -> Bri",
   };
-  const { api } = createApi(record);
+  const { api, apiCalls } = createApi(draft);
 
-  registerTools(server, api, { writeTools: ["update_entity"] });
+  registerTools(server, api, { writeTools: ["submit_relationship_draft"] });
 
-  const updateEntity = registeredTools.get("update_entity");
-  assert.ok(updateEntity, "update_entity handler should be registered");
+  const submitRelationshipDraft = registeredTools.get(
+    "submit_relationship_draft",
+  );
+  assert.ok(
+    submitRelationshipDraft,
+    "submit_relationship_draft handler should be registered",
+  );
+  const spec = registeredToolSpecs.get("submit_relationship_draft") as {
+    description?: string;
+  };
+  assertDraftFirstDescription(spec.description);
 
   const envelope = parseJsonContent(
-    await updateEntity({
-      projectSlug: "demo",
-      entitySlug: "old-key",
-      updates: { name: "Crystal Key" },
-    }),
-  );
-
-  assert.equal(envelope.links.admin, "/projects/demo/entities");
-  assert.equal(envelope.links.previousAdmin, undefined);
-  assert.equal(envelope.links.list, "/projects/demo/entities");
-  assert.ok(
-    envelope.nextActions.some(
-      (action: { note?: string }) =>
-        action.note ===
-        "The ITEM record did not include item.itemType.slug, so this envelope falls back to the project entity index instead of guessing a custom item route.",
-    ),
-  );
-});
-
-test("create_relationship returns list-only affordances without implying a detail route", async () => {
-  const { server, registeredTools } = createFakeServer();
-  const record = {
-    id: "rel_1",
-    type: "ally",
-    label: "Ally",
-    sourceEntity: { slug: "ari", name: "Ari" },
-    targetEntity: { slug: "bri", name: "Bri" },
-    project: { visibility: "PRIVATE" },
-  };
-  const { api } = createApi(record);
-
-  registerTools(server, api, { writeTools: ["create_relationship"] });
-
-  const createRelationship = registeredTools.get("create_relationship");
-  assert.ok(
-    createRelationship,
-    "create_relationship handler should be registered",
-  );
-
-  const envelope = parseJsonContent(
-    await createRelationship({
+    await submitRelationshipDraft({
       projectSlug: "demo",
       sourceEntitySlug: "ari",
       targetEntitySlug: "bri",
       type: "ally",
+      description: "Trusted companion",
     }),
   );
 
+  assert.deepEqual(apiCalls, [
+    {
+      path: "/projects/demo/drafts/relationships",
+      options: {
+        method: "POST",
+        body: JSON.stringify({
+          sourceEntitySlug: "ari",
+          targetEntitySlug: "bri",
+          type: "ally",
+          description: "Trusted companion",
+        }),
+      },
+    },
+  ]);
+  assert.equal(envelope.operation, "submit_draft");
   assert.equal(envelope.contentType, "relationship");
-  assert.equal(envelope.id, "rel_1");
-  assert.equal(envelope.links.admin, "/projects/demo/relationships");
-  assert.equal(envelope.links.public, undefined);
-  assert.equal(envelope.links.detail, undefined);
-  assertNoWorldHrefs(envelope.links);
-  assertNoWorldHrefs(envelope.nextActions);
-  assert.equal(envelope.visibility.publicReadable, false);
-  assert.equal(
-    envelope.visibility.reason,
-    "Project visibility is PRIVATE, so no public reader route is advertised.",
-  );
-  assert.ok(
-    envelope.nextActions.some(
-      (action: { note?: string }) =>
-        action.note ===
-        "Relationships currently expose list pages only; no detail route is advertised.",
-    ),
-  );
-});
-
-test("create_relationship with unknown visibility does not advertise public world hrefs", async () => {
-  const { server, registeredTools } = createFakeServer();
-  const record = {
-    id: "rel_2",
-    type: "rival",
-    label: "Rival",
-    sourceEntity: { slug: "ari", name: "Ari" },
-    targetEntity: { slug: "bri", name: "Bri" },
-  };
-  const { api } = createApi(record);
-
-  registerTools(server, api, { writeTools: ["create_relationship"] });
-
-  const createRelationship = registeredTools.get("create_relationship");
-  assert.ok(
-    createRelationship,
-    "create_relationship handler should be registered",
-  );
-
-  const envelope = parseJsonContent(
-    await createRelationship({
-      projectSlug: "demo",
-      sourceEntitySlug: "ari",
-      targetEntitySlug: "bri",
-      type: "rival",
-    }),
-  );
-
-  assert.equal(envelope.visibility.publicReadable, "unknown");
-  assert.equal(envelope.links.public, undefined);
+  assert.equal(envelope.canonicalApplied, false);
+  assert.deepEqual(envelope.links, {
+    reviewQueue: "/projects/demo/drafts",
+    draftApi: "/projects/demo/drafts/relationships/draft_rel_1",
+  });
   assertNoWorldHrefs(envelope.links);
   assertNoWorldHrefs(envelope.nextActions);
 });
 
-test("create_lore_article returns lore affordance envelope with public visibility unknown when not proven", async () => {
+test("submit_lore_article_draft submits a lore article review draft without canonical mutation", async () => {
   const { server, registeredTools, registeredToolSpecs } = createFakeServer();
-  const record = {
-    id: "lore_1",
-    slug: "founding",
-    title: "Founding",
-    canonStatus: "draft",
+  const draft = {
+    draftId: "draft_lore_1",
+    batchId: "batch_1",
+    status: "submitted",
+    canonicalApplied: false,
+    displayName: "Founding",
   };
-  const { api, apiCalls } = createApi(record);
+  const { api, apiCalls } = createApi(draft);
 
-  registerTools(server, api, { writeTools: ["create_lore_article"] });
+  registerTools(server, api, { writeTools: ["submit_lore_article_draft"] });
 
-  const createLoreArticle = registeredTools.get("create_lore_article");
-  assert.ok(
-    createLoreArticle,
-    "create_lore_article handler should be registered",
+  const submitLoreArticleDraft = registeredTools.get(
+    "submit_lore_article_draft",
   );
-  const createLoreArticleSpec = registeredToolSpecs.get(
-    "create_lore_article",
-  ) as {
+  assert.ok(
+    submitLoreArticleDraft,
+    "submit_lore_article_draft handler should be registered",
+  );
+  const spec = registeredToolSpecs.get("submit_lore_article_draft") as {
+    description?: string;
     inputSchema?: Record<string, unknown>;
   };
-  assert.ok(
-    createLoreArticleSpec.inputSchema?.canonStatus,
-    "create_lore_article input schema should expose canonStatus",
-  );
+  assertDraftFirstDescription(spec.description);
+  assert.ok(spec.inputSchema?.canonStatus, "schema should expose canonStatus");
 
   const envelope = parseJsonContent(
-    await createLoreArticle({
+    await submitLoreArticleDraft({
       projectSlug: "demo",
       title: "Founding",
       content: "Once...",
@@ -458,7 +422,7 @@ test("create_lore_article returns lore affordance envelope with public visibilit
 
   assert.deepEqual(apiCalls, [
     {
-      path: "/projects/demo/lore",
+      path: "/projects/demo/drafts/lore-articles",
       options: {
         method: "POST",
         body: JSON.stringify({
@@ -469,23 +433,16 @@ test("create_lore_article returns lore affordance envelope with public visibilit
       },
     },
   ]);
-  assert.equal(envelope.record.canonStatus, "draft");
-  assert.deepEqual(envelope.links, {
-    api: "/projects/demo/lore/founding",
-    admin: "/projects/demo/lore/founding",
-    list: "/projects/demo/lore",
-  });
+  assert.equal(envelope.operation, "submit_draft");
   assert.equal(envelope.contentType, "lore_article");
   assert.equal(envelope.displayType, "Lore article");
-  assert.equal(envelope.visibility.publicReadable, "unknown");
-  assert.equal(envelope.visibility.projectVisibility, undefined);
-  assert.ok(
-    envelope.nextActions.some(
-      (action: { label?: string; kind?: string }) =>
-        action.label === "Open Lore article in project admin" &&
-        action.kind === "open",
-    ),
-  );
+  assert.equal(envelope.canonicalApplied, false);
+  assert.deepEqual(envelope.links, {
+    reviewQueue: "/projects/demo/drafts",
+    draftApi: "/projects/demo/drafts/lore-articles/draft_lore_1",
+  });
+  assertNoWorldHrefs(envelope.links);
+  assertNoWorldHrefs(envelope.nextActions);
 });
 
 test("registerTools wires list_projects through injectable API client", async () => {
