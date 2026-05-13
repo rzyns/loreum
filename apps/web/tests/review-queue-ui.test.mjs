@@ -40,7 +40,14 @@ test("review queue page uses the reviewed entity draft API contract", async () =
 
   assert.match(
     page,
-    /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=SUBMITTED/,
+    /ReviewQueueFilterStatus\s*=\s*[\s\S]*"SUBMITTED"[\s\S]*"REJECTED"[\s\S]*"APPLIED"/,
+  );
+  assert.match(page, /REVIEW_QUEUE_FILTERS/);
+  assert.match(page, /No rejected drafts/);
+  assert.match(page, /No applied drafts/);
+  assert.match(
+    page,
+    /\/projects\/\$\{params\.slug\}\/drafts\/entities\?status=\$\{statusFilter\}/,
   );
   assert.match(
     page,
@@ -55,7 +62,6 @@ test("review queue page uses the reviewed entity draft API contract", async () =
     /\/projects\/\$\{params\.slug\}\/drafts\/entities\/\$\{detail\.id\}\/reject/,
   );
 });
-
 test("review queue page labels staged draft data and never presents it as canonical", async () => {
   const page = await source(reviewPage);
 
@@ -66,7 +72,7 @@ test("review queue page labels staged draft data and never presents it as canoni
   assert.match(page, /safeLinks/);
   assert.match(
     page,
-    /Actor and source labels are shown only as audit\s+provenance/,
+    /Actor and source labels are\s+shown only as audit\s+provenance/,
   );
   assert.match(page, /Approve and apply/);
   assert.match(page, /Reject staged draft/);
@@ -84,6 +90,43 @@ test("review queue action affordances are capability-aware before backend enforc
   assert.match(page, /canonical:apply_draft/);
   assert.match(page, /canReviewActions/);
   assert.match(page, /project-scoped\s+capabilities on every review action/);
+});
+
+test("review queue hides review actions for historical terminal drafts", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(page, /HistoricalStateNotice/);
+  assert.match(page, /detail\.status !== "SUBMITTED"/);
+  assert.match(
+    page,
+    /Review actions are unavailable because this draft is already/,
+  );
+  assert.match(page, /status === "SUBMITTED" \? \(/);
+  assert.match(page, /Applied canonical target/);
+  assert.match(page, /appliedCanonical/);
+});
+
+test("review queue exposes reversible archive affordances without pending archive", async () => {
+  const page = await source(reviewPage);
+
+  assert.match(
+    page,
+    /ReviewQueueFilterStatus\s*=\s*[\s\S]*"SUBMITTED"[\s\S]*"REJECTED"[\s\S]*"APPLIED"[\s\S]*"ARCHIVED"/,
+  );
+  assert.match(page, /label: "Archived"/);
+  assert.match(page, /No archived terminal drafts/);
+  assert.match(page, /archived=only/);
+  assert.match(page, /Archive from default history/);
+  assert.match(page, /Restore to history/);
+  assert.match(
+    page,
+    /This hides the terminal draft from the default review history/,
+  );
+  assert.match(
+    page,
+    /It does\s+not delete the draft, proposed content, review rationale, canonical\s+target, or audit events/,
+  );
+  assert.doesNotMatch(page, /Delete draft|Remove evidence|Clear history/);
 });
 
 test("review queue action result remains visible after list refresh clears detail", async () => {
@@ -107,7 +150,10 @@ test("review queue surfaces durable reviewer rationale and explicit absence", as
   assert.match(page, /No rationale recorded on this history event/);
   assert.match(page, /No reviewer rationale was recorded for this action/);
   assert.match(page, /reviewNote: reviewNote\.trim\(\) \|\| undefined/);
-  assert.match(page, /rejectionReason: rejectionReason\.trim\(\) \|\| undefined/);
+  assert.match(
+    page,
+    /rejectionReason: rejectionReason\.trim\(\) \|\| undefined/,
+  );
 });
 
 test("project navigation exposes review queue and activity entries", async () => {
@@ -138,6 +184,11 @@ test("activity page consumes safe audit summaries and gates audit detail access"
   assert.match(page, /Audit detail is restricted/);
   assert.match(page, /safe changelog summary remains visible/i);
   assert.match(page, /Reviewer rationale/);
+  assert.match(page, /Review-event provenance/);
+  assert.match(page, /Causation/);
+  assert.match(page, /Related review surface/);
+  assert.match(page, /Open review queue/);
+  assert.match(page, /href=\{reviewQueueHref\(params\.slug\)\}/);
   assert.match(page, /metadataStringValue\(detail\.metadata, "reviewNote"\)/);
   assert.match(page, /No reviewer rationale is recorded for this audit event/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);

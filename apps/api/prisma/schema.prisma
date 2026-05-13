@@ -775,6 +775,9 @@ model DraftProposal {
   reviewedAt          DateTime?
   appliedTargetId     String?
   appliedAt           DateTime?
+  archivedAt          DateTime?
+  archivedByUserId    String?
+  archiveReason       String?           @db.Text
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 

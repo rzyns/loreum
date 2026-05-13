@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Activity, ShieldAlert } from "lucide-react";
 import { Button } from "@loreum/ui/button";
@@ -94,6 +95,10 @@ function reviewRationaleFor(detail: AuditDetail) {
   };
 }
 
+function reviewQueueHref(projectSlug: string) {
+  return `/projects/${projectSlug}/review`;
+}
+
 function RationaleList({
   items,
   emptyLabel,
@@ -118,6 +123,54 @@ function RationaleList({
         </div>
       ))}
     </dl>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1 break-words font-medium">{value || "—"}</dd>
+    </div>
+  );
+}
+
+function ProvenanceGrid({ detail }: { detail: AuditDetail }) {
+  const streamValue = detail.streamKey
+    ? `${detail.streamKey}${detail.streamVersion ? ` v${detail.streamVersion}` : ""}`
+    : null;
+
+  return (
+    <section className="rounded-lg border bg-muted/30 p-3">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Review-event provenance
+      </h3>
+      <dl className="grid grid-cols-2 gap-3">
+        <DetailField label="Event" value={detail.id} />
+        <DetailField label="Request" value={detail.requestId} />
+        <DetailField label="Correlation" value={detail.correlationId} />
+        <DetailField label="Causation" value={detail.causationId} />
+        <DetailField label="Draft" value={detail.draftId} />
+        <DetailField label="Batch" value={detail.batchId} />
+        <DetailField label="Operation" value={detail.operation} />
+        <DetailField label="Target" value={detail.targetDisplay} />
+        <DetailField label="Actor" value={detail.actorLabel} />
+        <DetailField label="Source" value={detail.sourceKind} />
+        <DetailField label="Stream" value={streamValue} />
+        <DetailField
+          label="Committed"
+          value={detail.committedAt ? formatDate(detail.committedAt) : null}
+        />
+      </dl>
+    </section>
   );
 }
 
@@ -262,6 +315,16 @@ export default function ProjectActivityPage() {
                           {event.targetDisplay}
                         </p>
                       ) : null}
+                      {event.draftId ? (
+                        <p className="text-sm">
+                          <Link
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                            href={reviewQueueHref(params.slug)}
+                          >
+                            Open review queue for this draft context
+                          </Link>
+                        </p>
+                      ) : null}
                     </div>
                     <Button
                       type="button"
@@ -316,20 +379,24 @@ export default function ProjectActivityPage() {
                   </div>
                 ) : detail ? (
                   <div className="space-y-3 text-sm">
-                    <dl className="grid grid-cols-2 gap-2">
-                      <div>
-                        <dt className="text-muted-foreground">Request</dt>
-                        <dd className="font-medium">
-                          {detail.requestId ?? "—"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Correlation</dt>
-                        <dd className="font-medium">
-                          {detail.correlationId ?? "—"}
-                        </dd>
-                      </div>
-                    </dl>
+                    <ProvenanceGrid detail={detail} />
+                    {detail.draftId ? (
+                      <section className="rounded-lg border bg-background/70 p-3 text-sm">
+                        <p className="font-medium">Related review surface</p>
+                        <p className="text-muted-foreground">
+                          This audit event is attached to staged draft{" "}
+                          {detail.draftId}. Use the review queue for draft
+                          inspection and review history; this activity view
+                          keeps payload detail capability-gated and redacted.
+                        </p>
+                        <Link
+                          className="mt-2 inline-flex font-medium text-primary underline-offset-4 hover:underline"
+                          href={reviewQueueHref(params.slug)}
+                        >
+                          Open review queue
+                        </Link>
+                      </section>
+                    ) : null}
                     {(() => {
                       const rationale = reviewRationaleFor(detail);
                       return (

@@ -39,6 +39,7 @@ export class EntityDraftsController {
     @Query("operation") operation?: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
+    @Query("archived") archived?: string,
   ) {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
     const actor = this.resolveActor(project, user);
@@ -48,6 +49,7 @@ export class EntityDraftsController {
       operation,
       limit,
       offset,
+      archived,
     });
   }
 
@@ -132,6 +134,48 @@ export class EntityDraftsController {
     const project = await this.projectsService.findBySlug(projectSlug, user.id);
     const actor = this.resolveActor(project, user);
     return this.entityDraftsService.rejectEntityDraft(
+      project.id,
+      draftId,
+      actor,
+      dto,
+    );
+  }
+
+  @Post(":draftId/archive")
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Archive a terminal entity draft from default history",
+  })
+  async archive(
+    @Param("projectSlug") projectSlug: string,
+    @Param("draftId") draftId: string,
+    @User() user: AuthUser,
+    @Body() dto: { reason?: string },
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.archiveEntityDraft(
+      project.id,
+      draftId,
+      actor,
+      dto,
+    );
+  }
+
+  @Post(":draftId/unarchive")
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Restore an archived terminal entity draft to history",
+  })
+  async unarchive(
+    @Param("projectSlug") projectSlug: string,
+    @Param("draftId") draftId: string,
+    @User() user: AuthUser,
+    @Body() dto: { reason?: string },
+  ) {
+    const project = await this.projectsService.findBySlug(projectSlug, user.id);
+    const actor = this.resolveActor(project, user);
+    return this.entityDraftsService.unarchiveEntityDraft(
       project.id,
       draftId,
       actor,

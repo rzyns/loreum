@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -237,6 +238,7 @@ export class EntityDraftsService {
       operation?: string;
       limit?: string;
       offset?: string;
+      archived?: string;
     } = {},
   ) {
     this.assertProjectActor(projectId, actor);
@@ -248,6 +250,10 @@ export class EntityDraftsService {
       0,
       Number.MAX_SAFE_INTEGER,
     );
+    const statusFilter = filters.status?.toUpperCase();
+    const archivedFilter = filters.archived?.toLowerCase();
+    const archivedOnly =
+      archivedFilter === "only" || statusFilter === "ARCHIVED";
     const where: Prisma.DraftProposalWhereInput = {
       projectId,
       targetType: this.parseEnumFilter(
@@ -262,12 +268,26 @@ export class EntityDraftsService {
             DraftOperation.CREATE,
           )
         : { in: [DraftOperation.CREATE, DraftOperation.UPDATE] },
-      status: this.parseEnumFilter(
+    };
+
+    if (archivedOnly) {
+      where.archivedAt = { not: null };
+      where.status =
+        statusFilter && statusFilter !== "ARCHIVED"
+          ? this.parseEnumFilter(
+              filters.status,
+              DraftStatus,
+              DraftStatus.REJECTED,
+            )
+          : { in: [DraftStatus.REJECTED, DraftStatus.APPLIED] };
+    } else {
+      where.archivedAt = null;
+      where.status = this.parseEnumFilter(
         filters.status,
         DraftStatus,
         DraftStatus.SUBMITTED,
-      ),
-    };
+      );
+    }
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.draftProposal.findMany({
@@ -312,6 +332,13 @@ export class EntityDraftsService {
       throw new NotFoundException("Entity draft not found");
     }
 
+    const appliedCanonical = draft.appliedTargetId
+      ? await this.prisma.entity.findFirst({
+          where: { id: draft.appliedTargetId, projectId },
+          select: { id: true, slug: true, name: true },
+        })
+      : null;
+
     return {
       ...this.toReviewSummary(draft),
       batchId: draft.batchId,
@@ -319,7 +346,11 @@ export class EntityDraftsService {
         draft.operation === "UPDATE"
           ? await this.toSafeEntityUpdateProposedSummary(draft)
           : this.toSafeProposedSummary(draft.proposedData),
-      safeLinks: this.toReviewSafeLinks(actor.projectSlug, draft),
+      safeLinks: this.toReviewSafeLinks(
+        actor.projectSlug,
+        draft,
+        appliedCanonical,
+      ),
       reviewHistory: draft.auditEvents.map((event) => ({
         id: event.id,
         eventType: event.eventType,
@@ -335,8 +366,191 @@ export class EntityDraftsService {
           event.metadata,
           "rejectionReason",
         ),
+        archiveReason: this.getAuditMetadataRationale(
+          event.metadata,
+          "archiveReason",
+        ),
+        unarchiveReason: this.getAuditMetadataRationale(
+          event.metadata,
+          "unarchiveReason",
+        ),
         occurredAt: event.occurredAt,
       })),
+    };
+  }
+
+  async archiveEntityDraft(
+    projectId: string,
+    draftId: string,
+    actor: ActorContext,
+    input?: { reason?: string },
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.assertHumanReviewActor(actor);
+
+    const draft = await this.prisma.draftProposal.findFirst({
+      where: {
+        id: draftId,
+        projectId,
+        targetType: "ENTITY",
+        operation: "CREATE",
+      },
+    });
+    if (!draft) {
+      throw new NotFoundException("Entity draft not found");
+    }
+    if (draft.status !== "REJECTED" && draft.status !== "APPLIED") {
+      throw new BadRequestException(
+        "Only terminal entity drafts can be archived",
+      );
+    }
+    if (draft.archivedAt) {
+      throw new BadRequestException("Entity draft is already archived");
+    }
+
+    const archiveReason = input?.reason?.trim() || null;
+    const archived = await this.prisma.$transaction(async (tx) => {
+      const archivedAt = new Date();
+      const claimed = await tx.draftProposal.updateMany({
+        where: {
+          id: draft.id,
+          projectId,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: { in: ["REJECTED", "APPLIED"] },
+          archivedAt: null,
+        },
+        data: {
+          archivedAt,
+          archivedByUserId: actor.userId,
+          archiveReason,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException("Entity draft cannot be archived");
+      }
+
+      const archived = await tx.draftProposal.findUniqueOrThrow({
+        where: { id: draft.id },
+      });
+      await this.auditService.record(
+        {
+          projectId,
+          eventType: "DRAFT_ENTITY_ARCHIVED",
+          actor,
+          operation: "CREATE",
+          targetType: "ENTITY",
+          draftId: draft.id,
+          batchId: draft.batchId,
+          targetDisplay: draft.displayName,
+          summary: `Archived terminal entity draft ${draft.displayName}`,
+          metadata: {
+            archiveReason,
+            previousArchivedAt: draft.archivedAt,
+            newArchivedAt: archivedAt,
+            draftStatus: draft.status,
+            archiveVisibilityScope: "default_review_history_only",
+          },
+        },
+        { client: tx },
+      );
+      return archived;
+    });
+
+    return {
+      status: "archived",
+      draftId: archived.id,
+      batchId: archived.batchId,
+      draftStatus: archived.status,
+      archivedAt: archived.archivedAt,
+      archiveReason: this.redactReviewRationale(archived.archiveReason),
+    };
+  }
+
+  async unarchiveEntityDraft(
+    projectId: string,
+    draftId: string,
+    actor: ActorContext,
+    input?: { reason?: string },
+  ) {
+    this.assertProjectActor(projectId, actor);
+    this.assertHumanReviewActor(actor);
+
+    const draft = await this.prisma.draftProposal.findFirst({
+      where: {
+        id: draftId,
+        projectId,
+        targetType: "ENTITY",
+        operation: "CREATE",
+      },
+    });
+    if (!draft) {
+      throw new NotFoundException("Entity draft not found");
+    }
+    if (draft.status !== "REJECTED" && draft.status !== "APPLIED") {
+      throw new BadRequestException(
+        "Only terminal entity drafts can be restored",
+      );
+    }
+    if (!draft.archivedAt) {
+      throw new BadRequestException("Entity draft is not archived");
+    }
+
+    const unarchiveReason = input?.reason?.trim() || null;
+    const restored = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.draftProposal.updateMany({
+        where: {
+          id: draft.id,
+          projectId,
+          targetType: "ENTITY",
+          operation: "CREATE",
+          status: { in: ["REJECTED", "APPLIED"] },
+          archivedAt: { not: null },
+        },
+        data: {
+          archivedAt: null,
+          archivedByUserId: null,
+          archiveReason: null,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException("Entity draft cannot be restored");
+      }
+
+      const restored = await tx.draftProposal.findUniqueOrThrow({
+        where: { id: draft.id },
+      });
+      await this.auditService.record(
+        {
+          projectId,
+          eventType: "DRAFT_ENTITY_UNARCHIVED",
+          actor,
+          operation: "CREATE",
+          targetType: "ENTITY",
+          draftId: draft.id,
+          batchId: draft.batchId,
+          targetDisplay: draft.displayName,
+          summary: `Restored terminal entity draft ${draft.displayName}`,
+          metadata: {
+            unarchiveReason,
+            previousArchivedAt: draft.archivedAt,
+            newArchivedAt: null,
+            draftStatus: draft.status,
+            archiveVisibilityScope: "default_review_history_only",
+          },
+        },
+        { client: tx },
+      );
+      return restored;
+    });
+
+    return {
+      status: "unarchived",
+      draftId: restored.id,
+      batchId: restored.batchId,
+      draftStatus: restored.status,
+      archivedAt: restored.archivedAt,
+      archiveReason: this.redactReviewRationale(restored.archiveReason),
     };
   }
 
@@ -993,6 +1207,8 @@ export class EntityDraftsService {
     appliedAt: Date | null;
     reviewNote?: string | null;
     rejectionReason?: string | null;
+    archivedAt?: Date | null;
+    archiveReason?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -1009,6 +1225,11 @@ export class EntityDraftsService {
       canonicalApplied: Boolean(draft.appliedTargetId || draft.appliedAt),
       reviewNote: this.redactReviewRationale(draft.reviewNote),
       rejectionReason: this.redactReviewRationale(draft.rejectionReason),
+      archive: {
+        archived: Boolean(draft.archivedAt),
+        archivedAt: draft.archivedAt,
+        archiveReason: this.redactReviewRationale(draft.archiveReason),
+      },
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
     };
@@ -1016,7 +1237,7 @@ export class EntityDraftsService {
 
   private getAuditMetadataRationale(
     metadata: Prisma.JsonValue,
-    key: "reviewNote" | "rejectionReason",
+    key: "reviewNote" | "rejectionReason" | "archiveReason" | "unarchiveReason",
   ): string | null {
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
       return null;
@@ -1075,6 +1296,7 @@ export class EntityDraftsService {
       operation?: string;
       targetId?: string | null;
     },
+    appliedCanonical: { id: string; slug: string; name: string } | null,
   ) {
     const base = `/v1/projects/${projectSlug ?? ""}/drafts/entities/${draft.id}`;
     const proposed =
@@ -1095,6 +1317,13 @@ export class EntityDraftsService {
     const canonicalSlug =
       slug && safeSlug === slug && slugify(slug) === slug ? slug : undefined;
 
+    const appliedCanonicalSlug =
+      appliedCanonical &&
+      this.redactSafeText(appliedCanonical.slug) === appliedCanonical.slug &&
+      slugify(appliedCanonical.slug) === appliedCanonical.slug
+        ? appliedCanonical.slug
+        : undefined;
+
     return {
       review: base,
       approve: `${base}/approve`,
@@ -1102,6 +1331,17 @@ export class EntityDraftsService {
       proposedCanonical: canonicalSlug
         ? `/v1/projects/${projectSlug ?? ""}/entities/${canonicalSlug}`
         : null,
+      appliedCanonical:
+        appliedCanonical && appliedCanonicalSlug
+          ? {
+              id: appliedCanonical.id,
+              slug: appliedCanonicalSlug,
+              name:
+                this.redactSafeText(appliedCanonical.name) ??
+                "Redacted canonical entity",
+              href: `/v1/projects/${projectSlug ?? ""}/entities/${appliedCanonicalSlug}`,
+            }
+          : null,
     };
   }
 
@@ -1379,5 +1619,14 @@ export class EntityDraftsService {
         "Draft operations require matching project actor context",
       );
     }
+  }
+
+  private assertHumanReviewActor(actor: ActorContext) {
+    if (actor.kind !== "HUMAN") {
+      throw new ForbiddenException(
+        "Only human project reviewers can archive drafts",
+      );
+    }
+    this.capabilities.assertCapabilities(actor, ["draft:review"]);
   }
 }
