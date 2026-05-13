@@ -117,8 +117,8 @@ Do not enable write-capable HTTP MCP just by setting `MCP_READ_ONLY=false`. Safe
 - API-side enforcement of target permissions: `READ_ONLY` allows broad project-scoped reads only; `DRAFT_WRITE` may submit drafts/proposals; `CANONICAL_WRITE` may mutate canon and approve/apply drafts; legacy `READ_WRITE` aliases `CANONICAL_WRITE`.
 - API-side enforcement that project API keys cannot read or mutate other projects and cannot perform account-global/control-plane operations.
 - Explicit MCP write opt-in with `MCP_ENABLE_WRITES=true`.
-- A narrow `MCP_WRITE_TOOLS` allowlist; start with `create_entity` only for disposable-project smoke testing.
-- For staging/dev-only testing of every implemented write tool, set `MCP_ALLOW_ALL_WRITE_TOOLS=true` and explicitly list the desired tools in `MCP_WRITE_TOOLS`. Any all-write HTTP MCP posture is staging-only for `testworld`, not a production/default configuration.
+- A narrow draft-first `MCP_WRITE_TOOLS` allowlist. For approved disposable-project smoke testing, use only draft-submit tools such as `create_entity`, `submit_entity_update_draft`, `submit_relationship_draft`, and `submit_lore_article_draft`.
+- Do not list legacy direct canonical names (`update_entity`, `create_relationship`, `create_lore_article`) for remote HTTP MCP. They are intentionally filtered out; `MCP_ALLOW_ALL_WRITE_TOOLS` is a legacy compatibility variable and does not expand the HTTP draft-first surface.
 - Rollback proof that disabling write mode removes all mutation tools from discovery again.
 
 Keep examples placeholder-only and never commit real `MCP_HTTP_AUTH_TOKEN`, `MCP_API_TOKEN`, API keys, or stack environment values.

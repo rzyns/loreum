@@ -289,13 +289,13 @@ Users generate project-scoped API keys from project settings in the web UI. Each
 
 Current implementation note: API keys historically used a binary `READ_ONLY` / `READ_WRITE` enum. Phase-2 agentic CMS work uses `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; `READ_WRITE` remains a legacy compatibility alias for `CANONICAL_WRITE` while old rows/clients migrate. Reads are liberal but project-scoped: no cross-project reads, account-global mutation, or control-plane access.
 
-| Feature                                  | Status  | Tier |
-| ---------------------------------------- | ------- | ---- |
-| API key generation UI (project settings) | Planned | Free |
+| Feature                                                                                          | Status  | Tier |
+| ------------------------------------------------------------------------------------------------ | ------- | ---- |
+| API key generation UI (project settings)                                                         | Planned | Free |
 | Key permissions: read-only / draft-write / canonical-write, with legacy read-write compatibility | Planned | Free |
-| Key expiration + revocation              | Planned | Free |
-| Last-used tracking                       | Planned | Free |
-| Multiple keys per project                | Planned | Free |
+| Key expiration + revocation                                                                      | Planned | Free |
+| Last-used tracking                                                                               | Planned | Free |
+| Multiple keys per project                                                                        | Planned | Free |
 
 **Flow:**
 
@@ -338,26 +338,26 @@ The MCP server exposes tools for AI clients to read and write world data. The ta
 
 Target behavior: write-like MCP tools should submit reviewable draft/proposal records instead of directly modifying canonical data. The user reviews and applies accepted changes from the web UI or another authorized review surface.
 
-Current implementation note: several write tools exist today, but they still call canonical write endpoints when write mode is enabled. The Phase-2 draft/audit design changes that behavior for the first slice by routing `create_entity` through a draft-submit path before any remote write-mode deployment decision.
+Current implementation note: the remote HTTP-safe MCP write surface is now draft-first. The built tools below stage review drafts and return `canonicalApplied: false`; authorized review/apply is a separate step. Legacy direct canonical names are intentionally hidden over HTTP.
 
-| Tool                    | Description                                          | Status  |
-| ----------------------- | ---------------------------------------------------- | ------- |
-| `create_entity`         | Create a new entity (character, location, org, item) | Built   |
-| `update_entity`         | Partial update to an existing entity                 | Built   |
-| `create_relationship`   | Create a relationship between two entities           | Built   |
-| `create_lore_article`   | Create a lore article linked to entities             | Built   |
-| `update_lore_article`   | Update an existing lore article                      | Planned |
-| `delete_entity`         | Delete an entity                                     | Planned |
-| `delete_relationship`   | Delete a relationship                                | Planned |
-| `delete_lore_article`   | Delete a lore article                                | Planned |
-| `create_timeline_event` | Create a timeline event linked to entities           | Planned |
-| `update_timeline_event` | Update an existing timeline event                    | Planned |
-| `delete_timeline_event` | Delete a timeline event                              | Planned |
-| `create_scene`          | Create a scene within a chapter                      | Planned |
-| `update_scene`          | Update scene content, style notes, characters        | Planned |
-| `create_plot_point`     | Create a plot point on a plotline                    | Planned |
-| `update_plot_point`     | Update a plot point                                  | Planned |
-| `set_style_guide`       | Create or update the project style guide             | Planned |
+| Tool                         | Description                                              | Status  |
+| ---------------------------- | -------------------------------------------------------- | ------- |
+| `create_entity`              | Submit a new entity draft (compatibility name)           | Built   |
+| `submit_entity_update_draft` | Submit a proposed patch to an existing entity            | Built   |
+| `submit_relationship_draft`  | Submit a proposed relationship between existing entities | Built   |
+| `submit_lore_article_draft`  | Submit a proposed lore article linked to entities        | Built   |
+| `update_lore_article`        | Update an existing lore article                          | Planned |
+| `delete_entity`              | Delete an entity                                         | Planned |
+| `delete_relationship`        | Delete a relationship                                    | Planned |
+| `delete_lore_article`        | Delete a lore article                                    | Planned |
+| `create_timeline_event`      | Create a timeline event linked to entities               | Planned |
+| `update_timeline_event`      | Update an existing timeline event                        | Planned |
+| `delete_timeline_event`      | Delete a timeline event                                  | Planned |
+| `create_scene`               | Create a scene within a chapter                          | Planned |
+| `update_scene`               | Update scene content, style notes, characters            | Planned |
+| `create_plot_point`          | Create a plot point on a plotline                        | Planned |
+| `update_plot_point`          | Update a plot point                                      | Planned |
+| `set_style_guide`            | Create or update the project style guide                 | Planned |
 
 **Resources**
 
@@ -461,13 +461,13 @@ Phase-2 draft/audit lifecycle details are expanded in [`AGENTIC_CMS_DRAFT_LIFECY
 
 #### How It Works
 
-Target behavior: every MCP write operation (create, update, delete) produces a reviewable draft/proposal record instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state. Any all-write HTTP MCP deployment posture is staging-only for `testworld`, not a production/default recommendation.
+Target behavior: MCP write operations produce reviewable draft/proposal records instead of modifying live data. The author reviews these changes from a dedicated staging area in the web UI before they touch the canonical world state. The current HTTP-safe MCP write surface is draft-first only and intentionally hides legacy direct canonical tool names.
 
 Current implementation note: the existing schema includes an early `PendingChange` model, but it is under-specified for Phase-2 actor/source, approval/application, capability, and audit requirements. New implementation work should follow the `DraftProposal` + append-only `AuditEvent` design rather than expanding `PendingChange` unless a deliberate migration/rename is chosen.
 
 **Write flow:**
 
-1. AI calls a write tool (e.g. `create_entity`, `update_entity`, `delete_entity`)
+1. AI calls a draft-submit tool (e.g. `create_entity`, `submit_entity_update_draft`, `submit_relationship_draft`, `submit_lore_article_draft`)
 2. The API validates the payload, then creates a draft/proposal record instead of applying it
 3. The MCP tool returns a confirmation that the change was staged (not applied)
 4. The user sees a badge on the "Review" nav item showing the pending count

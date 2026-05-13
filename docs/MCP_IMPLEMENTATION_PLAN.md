@@ -23,7 +23,7 @@ The MCP server (`apps/mcp/src/index.ts`, with tool registration in `apps/mcp/src
   - Relationships: `list_relationships`, `get_relationship`
   - Tags: `list_tags`, `get_tag`
   - Storyboard: `get_storyboard`, `list_plotlines`, `get_plotline`, `list_works`, `get_work`, `list_scenes_by_chapter`
-- 4 existing write tools: `create_entity`, `update_entity`, `create_relationship`, `create_lore_article`
+- 4 HTTP-safe draft-submit write tools: `create_entity` (compatibility name), `submit_entity_update_draft`, `submit_relationship_draft`, `submit_lore_article_draft`
 - 1 resource: `project_overview`
 - A simple `api()` helper that throws on HTTP errors
 - Auth via `MCP_API_TOKEN` env var (API key with `lrm_` prefix, Bearer token)
@@ -65,7 +65,7 @@ MCP tool tests use fake API calls against the extracted tool-registration seam. 
 
 **Search is basic, not full-text infrastructure:** The `search_project` tool now returns real Prisma `contains` results. OpenSearch/search-vector work remains long-term.
 
-**Write tools and review queue:** New implementation work supersedes the older `PendingChange`-only sketch with the Phase-2 `DraftProposal`/`AuditEvent` lifecycle. MCP mutation tools should stage through draft proposal endpoints unless a future cleanup deliberately migrates or retires the legacy `PendingChange` model.
+**Write tools and review queue:** The RQ2 draft-first MCP slice now stages entity-create, entity-update, relationship, and lore-article drafts through `DraftProposal`/`AuditEvent` review paths. Remaining MCP write expansion should continue using draft proposal endpoints unless a future cleanup deliberately migrates or retires the legacy `PendingChange` model.
 
 **Style Guide doesn't exist yet:** The model, migration, service, controller, and schema fields (`voiceNotes`, `styleNotes`) are all long-term work. The `get_style_guide` and `set_style_guide` MCP tools cannot be built until the Style Guide feature is implemented.
 
@@ -165,10 +165,10 @@ All API endpoints already exist. MCP-side only.
 
 #### MCP work (`apps/mcp/`)
 
-3. Update existing write tools (`create_entity`, `update_entity`, `create_relationship`, `create_lore_article`) to:
-   - Call a draft proposal endpoint instead of the direct CRUD endpoint
-   - Return confirmation that the change was staged, not applied
-   - Include `batchId` (generated per MCP session or conversation)
+3. Completed RQ2 draft-first MCP slice:
+   - `create_entity` calls the entity draft endpoint despite its compatibility name
+   - `submit_entity_update_draft`, `submit_relationship_draft`, and `submit_lore_article_draft` call draft proposal endpoints
+   - Responses confirm that the change was staged, not applied, and include draft/review affordance metadata
 
 4. Update `api()` helper to return structured MCP errors instead of throwing (if not done in Phase 3)
 
@@ -183,9 +183,9 @@ All API endpoints already exist. MCP-side only.
 
 **Test gate:** From Claude Desktop, create an entity via MCP. Verify it appears in the review queue (not in the entity list). Accept it from the web UI. Verify it now appears in the entity list.
 
-### Phase 5: Expand MCP Write Tools (blocked on Phase 4)
+### Phase 5: Expand Remaining MCP Write Tools
 
-**Goal:** Add the remaining mutation tools, all routing through `DraftProposal` staging.
+**Goal:** Add any remaining mutation categories not covered by the RQ2 draft-first slice, all routing through `DraftProposal` staging.
 
 | Tool                    | API Endpoint             | Notes |
 | ----------------------- | ------------------------ | ----- |
@@ -208,9 +208,8 @@ All API endpoints already exist. MCP-side only.
 These are explicitly deferred and should not be built during this work:
 
 - **Style Guide MCP tools** (`get_style_guide`, `set_style_guide`) — blocked on Style Guide model/migration/service/controller which is long-term work
-- **Streamable HTTP transport** — stdio is sufficient for testing; HTTP transport is a follow-up
-- **OAuth2 discovery endpoint** — depends on HTTP transport
-- **Redis rate limiting** — not needed until remote HTTP transport exists
+- **OAuth2 discovery endpoint** — separate follow-up for broader remote-client compatibility
+- **Redis rate limiting** — follow-up for higher-traffic remote HTTP deployments
 - **Permission-scoped tool filtering** — nice-to-have after auth works, not required for testability
 
 ---

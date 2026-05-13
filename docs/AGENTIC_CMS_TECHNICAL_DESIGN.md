@@ -33,23 +33,25 @@ Relevant current code:
   - Existing MCP/review queue primitives are `ApiKey`, `PendingChange`, `ChangeOperation`, and `ChangeStatus`.
   - `ApiKeyPermission` is currently in transition: historical rows/clients may still use `READ_ONLY | READ_WRITE`, while the Phase-2 target model is `READ_ONLY | DRAFT_WRITE | CANONICAL_WRITE` with `READ_WRITE` retained only as a legacy compatibility alias for `CANONICAL_WRITE`.
 - API entity write path:
-  - `apps/api/src/entities/entities.controller.ts` `POST /v1/projects/:projectSlug/entities` calls `EntitiesService.create(...)` directly.
-  - `apps/api/src/entities/entities.service.ts` `create(...)` inserts into canonical `entity` and extension tables immediately.
+  - `apps/api/src/entities/entities.controller.ts` `POST /v1/projects/:projectSlug/entities` remains the canonical create path for authorized first-party/API callers.
+  - Draft submit endpoints under `/v1/projects/:projectSlug/drafts/...` create review proposals instead of applying canonical writes.
 - MCP write path:
-  - `apps/mcp/src/tools.ts` registers `create_entity` when write tools are enabled.
-  - `create_entity` currently POSTs to `/projects/:projectSlug/entities` and returns the API response, so a write-enabled MCP call is canonical today.
+  - `apps/mcp/src/tools.ts` registers draft-first write tools when HTTP write tools are explicitly enabled.
+  - `create_entity` is now a compatibility-name draft submitter that POSTs to `/projects/:projectSlug/drafts/entities` and returns staged/not-canonical affordance metadata.
+  - `submit_entity_update_draft`, `submit_relationship_draft`, and `submit_lore_article_draft` also stage drafts rather than mutating canonical data.
 - Auth/API key path:
   - `apps/api/src/auth/guards/api-key-auth.guard.ts` validates project scope. Historical write checks are based on `READ_WRITE`; Phase-2 authorization must resolve `READ_WRITE` as a legacy alias for `CANONICAL_WRITE` while treating `DRAFT_WRITE` as draft/proposal submission only.
   - API-key-authenticated requests are represented in `AuthUser.apiKey`, but the API key mode is not expressive enough for draft-write vs canonical-write.
 - Existing tests:
-  - `apps/api/src/entities/entities.spec.ts` asserts canonical creation on POST.
-  - `apps/mcp/src/tools.test.ts` asserts the tool registry and wire paths; it will need expectation updates for draft-first semantics.
+  - `apps/api/src/entities/entities.spec.ts` covers canonical create plus draft-first entity update/application behavior.
+  - `apps/api/src/relationships/relationships.spec.ts` and `apps/api/src/lore/lore.spec.ts` cover relationship and lore draft paths.
+  - `apps/mcp/src/tools.test.ts` and `apps/mcp/src/server.test.ts` assert draft-first tool registration, wire paths, and fail-closed HTTP discovery semantics.
 
-Important implication: Phase 2 must add a new draft/application path before changing the MCP `create_entity` path. Otherwise the existing `EntitiesService.create(...)` remains the only behavior and MCP writes still mutate canon.
+Important implication: future MCP write expansion should add draft/application paths first and then route MCP tools to those paths. Remote HTTP discovery must stay fail-closed and draft-first.
 
 ## 3. First vertical slice decision
 
-Build the first slice around `create_entity` only.
+The first slice was built around `create_entity`; RQ2 then expanded the same draft-first pattern to entity updates, relationships, and lore articles.
 
 In scope:
 
@@ -73,7 +75,7 @@ Out of scope for the first slice:
 - Deployment or homelab stack changes.
 - Dolt/DoltgreSQL.
 - Broad review queue UI polish beyond the current local project Review queue and Activity surfaces.
-- Drafts for relationships, lore articles, timeline, storyboard, imports, or batch dependency resolution.
+- Drafts for timeline, storyboard, imports, or broader batch dependency resolution beyond the supported entity/relationship/lore draft paths.
 - Direct canonical write by trusted agents.
 - Async application jobs unless synchronous application proves unworkable.
 

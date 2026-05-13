@@ -120,7 +120,7 @@ Connect any MCP-compatible AI to your world data. Generate a project-scoped API 
 }
 ```
 
-Project API keys are scoped to one project. Target permissions are `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; legacy `READ_WRITE` is a compatibility alias for canonical write capability, not a new-key recommendation. Remote HTTP MCP deployments must stay read-only/fail-closed by default; exposing mutation tools requires an explicit server-side write opt-in (`MCP_ENABLE_WRITES=true`) plus a narrow `MCP_WRITE_TOOLS` allowlist after API permission and project-scope enforcement has been verified. Any all-write HTTP MCP posture is staging-only for `testworld`, not production/default. The current direct-write MCP tools are not a substitute for the planned review queue. [Full MCP documentation](https://loreum.app/docs/mcp).
+Project API keys are scoped to one project. Target permissions are `READ_ONLY`, `DRAFT_WRITE`, and `CANONICAL_WRITE`; legacy `READ_WRITE` is a compatibility alias for canonical write capability, not a new-key recommendation. Remote HTTP MCP deployments stay read-only/fail-closed by default; exposing draft submission tools requires an explicit server-side write opt-in (`MCP_ENABLE_WRITES=true`) plus a narrow draft-first `MCP_WRITE_TOOLS` allowlist after API permission and project-scope enforcement has been verified. The HTTP-safe write surface stages review drafts (`create_entity`, `submit_entity_update_draft`, `submit_relationship_draft`, `submit_lore_article_draft`) and intentionally hides legacy direct canonical write names. [Full MCP documentation](https://loreum.app/docs/mcp).
 
 ## Project Structure
 

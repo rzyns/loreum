@@ -4,9 +4,9 @@
 
 ### MCP Authentication & Review Queue
 
-- **API key model**: `ApiKey` table with project scoping, bcrypt-hashed keys, read-only/read-write permissions, expiration, revocation, last-used tracking
-- **Review queue model**: `PendingChange` table with operation type (CREATE/UPDATE/DELETE), target model, proposed data, previous data snapshot for diffs, batch grouping by AI session, accept/reject status
-- **Prisma schema**: Added `ApiKeyPermission`, `ChangeOperation`, `ChangeStatus` enums; `ApiKey` and `PendingChange` models with relations on `Project`
+- **API key model**: `ApiKey` table with project scoping, hashed keys, `READ_ONLY` / `DRAFT_WRITE` / `CANONICAL_WRITE` target permissions, expiration, revocation, and last-used tracking (`READ_WRITE` remains a legacy canonical-write alias)
+- **Review queue model**: `DraftProposal` and `AuditEvent` lifecycle for draft submission, review, approve/apply, reject, archive, provenance, and previous/proposed snapshots
+- **MCP draft-first write surface**: HTTP-safe write tools now stage entity-create, entity-update, relationship, and lore-article drafts; legacy direct canonical write names are hidden over HTTP
 
 ### Product Spec Updates
 

@@ -732,15 +732,15 @@ Project API keys are scoped to one project. Target permissions are `READ_ONLY`, 
 
 ### Environment Variables
 
-| Variable              | Required | Default                    | Notes                                                                 |
-| --------------------- | -------- | -------------------------- | --------------------------------------------------------------------- |
-| `MCP_API_BASE_URL`    | no       | `http://localhost:3021/v1` | Loreum API base URL                                                   |
-| `MCP_API_TOKEN`       | no       | -                          | Server-to-API project API key; use a placeholder in examples          |
-| `MCP_TRANSPORT`       | no       | `stdio`                    | `stdio` for local clients, `http` for controlled server deployments   |
-| `MCP_HTTP_AUTH_TOKEN` | HTTP yes | -                          | Client-to-MCP bearer token for HTTP transport                         |
-| `MCP_READ_ONLY`       | no       | `true` for HTTP            | Read-only mode; HTTP deployments should leave this true by default    |
-| `MCP_ENABLE_WRITES`   | no       | `false`                    | Explicit write opt-in required before any HTTP write tools are listed |
-| `MCP_WRITE_TOOLS`     | no       | empty                      | Comma-separated mutation allowlist, e.g. `create_entity`              |
+| Variable              | Required | Default                    | Notes                                                                                  |
+| --------------------- | -------- | -------------------------- | -------------------------------------------------------------------------------------- |
+| `MCP_API_BASE_URL`    | no       | `http://localhost:3021/v1` | Loreum API base URL                                                                    |
+| `MCP_API_TOKEN`       | no       | -                          | Server-to-API project API key; use a placeholder in examples                           |
+| `MCP_TRANSPORT`       | no       | `stdio`                    | `stdio` for local clients, `http` for controlled server deployments                    |
+| `MCP_HTTP_AUTH_TOKEN` | HTTP yes | -                          | Client-to-MCP bearer token for HTTP transport                                          |
+| `MCP_READ_ONLY`       | no       | `true` for HTTP            | Read-only mode; HTTP deployments should leave this true by default                     |
+| `MCP_ENABLE_WRITES`   | no       | `false`                    | Explicit write opt-in required before any HTTP write tools are listed                  |
+| `MCP_WRITE_TOOLS`     | no       | empty                      | Comma-separated draft-first allowlist, e.g. `create_entity,submit_entity_update_draft` |
 
 ### Resources
 
@@ -836,11 +836,9 @@ Get the project's style guide. When writing a scene, also returns scene-level `s
 
 ### Mutation Tools
 
-Mutation tools are hidden from read-only MCP discovery. For remote HTTP deployments, `MCP_READ_ONLY=false` is not sufficient by itself; writes require `MCP_ENABLE_WRITES=true` and an explicit `MCP_WRITE_TOOLS` allowlist after API authorization tests prove target permission semantics and project-scope enforcement. Any all-write HTTP MCP posture is staging-only for `testworld`; it is not a production/default recommendation. Start any approved write-capable smoke test with `create_entity` against a disposable project only.
+Mutation tools are hidden from read-only MCP discovery. For remote HTTP deployments, `MCP_READ_ONLY=false` is not sufficient by itself; writes require `MCP_ENABLE_WRITES=true` and an explicit draft-first `MCP_WRITE_TOOLS` allowlist after API authorization tests prove target permission semantics and project-scope enforcement. Remote HTTP MCP write tools submit review drafts and do not apply canonical changes on submit. Legacy direct canonical names (`update_entity`, `create_relationship`, `create_lore_article`) are intentionally hidden over HTTP; `MCP_ALLOW_ALL_WRITE_TOOLS` is legacy/inert for this surface.
 
-The current MCP mutation handlers call Loreum API mutation routes directly. They do not yet represent the planned review-queue flow.
-
-#### `create_entity` - Built
+#### `create_entity` - Built (draft submit)
 
 | Parameter     | Type     | Required | Notes                                           |
 | ------------- | -------- | -------- | ----------------------------------------------- |
@@ -854,44 +852,48 @@ The current MCP mutation handlers call Loreum API mutation routes directly. They
 | `notes`       | string   | no       |                                                 |
 | `tags`        | string[] | no       |                                                 |
 
-**API call:** `POST /projects/{projectSlug}/entities`
+**API call:** `POST /projects/{projectSlug}/drafts/entities`
 
-#### `update_entity` - Built
+Despite the compatibility name, this tool submits an entity draft for review. It returns `canonicalApplied: false`; an authorized reviewer must approve/apply the draft before canonical entity data changes.
 
-| Parameter     | Type   | Required | Notes            |
-| ------------- | ------ | -------- | ---------------- |
-| `projectSlug` | string | yes      |                  |
-| `entitySlug`  | string | yes      |                  |
-| `updates`     | object | yes      | Fields to update |
+#### `submit_entity_update_draft` - Built (draft submit)
 
-**API call:** `PATCH /projects/{projectSlug}/entities/{entitySlug}`
+| Parameter     | Type   | Required | Notes                           |
+| ------------- | ------ | -------- | ------------------------------- |
+| `projectSlug` | string | yes      |                                 |
+| `entitySlug`  | string | yes      | Existing canonical entity slug  |
+| `patch`       | object | yes      | Proposed fields to stage/review |
 
-#### `create_relationship` - Built
+**API call:** `POST /projects/{projectSlug}/drafts/entities/{entitySlug}/update`
+
+#### `submit_relationship_draft` - Built (draft submit)
 
 | Parameter          | Type    | Required | Notes             |
 | ------------------ | ------- | -------- | ----------------- |
 | `projectSlug`      | string  | yes      |                   |
 | `sourceEntitySlug` | string  | yes      |                   |
 | `targetEntitySlug` | string  | yes      |                   |
-| `type`             | string  | yes      | Relationship type |
+| `type`             | string  | no       | Relationship type |
 | `label`            | string  | no       |                   |
+| `description`      | string  | no       |                   |
 | `metadata`         | object  | no       |                   |
 | `bidirectional`    | boolean | no       |                   |
 
-**API call:** `POST /projects/{projectSlug}/relationships`
+**API call:** `POST /projects/{projectSlug}/drafts/relationships`
 
-#### `create_lore_article` - Built
+#### `submit_lore_article_draft` - Built (draft submit)
 
-| Parameter     | Type     | Required | Notes            |
-| ------------- | -------- | -------- | ---------------- |
-| `projectSlug` | string   | yes      |                  |
-| `title`       | string   | yes      |                  |
-| `content`     | string   | yes      | Markdown         |
-| `category`    | string   | no       |                  |
-| `tags`        | string[] | no       |                  |
-| `entitySlugs` | string[] | no       | Link to entities |
+| Parameter     | Type     | Required | Notes                                         |
+| ------------- | -------- | -------- | --------------------------------------------- |
+| `projectSlug` | string   | yes      |                                               |
+| `title`       | string   | yes      |                                               |
+| `content`     | string   | yes      | Markdown                                      |
+| `category`    | string   | no       |                                               |
+| `canonStatus` | enum     | no       | `draft`, `staging`, `provisional`, or `canon` |
+| `tags`        | string[] | no       | Existing tags only                            |
+| `entitySlugs` | string[] | no       | Link to entities                              |
 
-**API call:** `POST /projects/{projectSlug}/lore`
+**API call:** `POST /projects/{projectSlug}/drafts/lore-articles`
 
 ---
 

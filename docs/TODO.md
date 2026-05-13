@@ -23,14 +23,14 @@ Tracked tasks for Loreum. Near-term is the next couple weeks, long-term is every
 
 Legacy note: the older `PendingChange` checklist is superseded for new work by the Phase-2 `DraftProposal`/`AuditEvent` lifecycle in `AGENTIC_CMS_DRAFT_LIFECYCLE_SPEC.md` and `AGENTIC_CMS_TECHNICAL_DESIGN.md`. Keep `PendingChange` only as legacy schema context unless a deliberate cleanup migrates or retires it.
 
-- [ ] DraftProposal service: create draft proposal, list by project/status/batch, approve/apply, reject
-- [ ] Approve/apply logic: atomically apply `proposedData` to the target model (create/update/delete), set status to APPLIED, and append audit history
-- [ ] Reject logic: reject only pre-approval states and append audit history
-- [ ] Batch approve/apply: apply all eligible submitted drafts in a batch in dependency order
-- [ ] Snapshot `previousData` on update/delete for diff display
-- [ ] DraftProposal controller: draft-list endpoint plus target-specific approve/reject endpoints
-- [ ] Route MCP write tools through DraftProposal endpoints instead of direct writes
-- [ ] MCP tool responses: return confirmation that change was staged, not applied
+- [x] DraftProposal service: create draft proposal, list by project/status/batch, approve/apply, reject
+- [x] Approve/apply logic: atomically apply `proposedData` to the target model, set status to APPLIED, and append audit history
+- [x] Reject logic: reject only pre-approval states and append audit history
+- [x] Batch approve/apply: apply eligible submitted drafts in dependency order for supported draft types
+- [x] Snapshot `previousData` on update/delete for diff display
+- [x] DraftProposal controller: draft-list endpoints plus target-specific approve/reject endpoints
+- [x] Route RQ2 MCP write tools through DraftProposal endpoints instead of direct writes
+- [x] MCP tool responses: return confirmation that change was staged, not applied
 - [ ] Review queue page: list view grouped by batch, operation badges (create/update/delete)
 - [ ] Diff view for updates (side-by-side, highlight changed fields)
 - [ ] Preview for creates (rendered as the record would appear)
@@ -44,25 +44,28 @@ Legacy note: the older `PendingChange` checklist is superseded for new work by t
 
 See [MCP_IMPLEMENTATION_PLAN.md](MCP_IMPLEMENTATION_PLAN.md) Phase 3 for full context.
 
-**Search** (API work — endpoint exists as stub, needs real implementation):
+**Search**:
 
-- [ ] Implement Prisma `contains` search across entities, lore, timeline, scenes
-- [ ] Return unified result format with type labels and excerpts
+- [x] Implement Prisma `contains` search across entities, lore, timeline, scenes
+- [x] Return unified result format with type labels and excerpts
 
 **Read tools** (MCP-side only — all API endpoints exist):
 
-- [ ] `list_projects` - list user's projects
-- [ ] `get_project` - project detail
-- [ ] `list_relationships` - relationships, optionally filtered by entity
-- [ ] `get_timeline` - timeline events with filters
-- [ ] `get_timeline_event` - single event detail
-- [ ] `list_eras` - eras for a project
-- [ ] `list_lore_articles` - filter lore articles
-- [ ] `get_lore_article` - single lore article
-- [ ] `list_tags` - all tags in a project
-- [ ] `get_plotline` - plotline with plot points
-- [ ] `get_work` - work with chapters and scene structure
-- [ ] `list_scenes` - scenes in a chapter (narrative content)
+- [x] `list_projects` - list user's projects
+- [x] `get_project` - project detail
+- [x] `list_relationships` - relationships, optionally filtered by entity
+- [x] `get_relationship` - single relationship detail
+- [x] `list_timeline_events` - timeline events with filters
+- [x] `get_timeline_event` - single event detail
+- [x] `list_lore_articles` - filter lore articles
+- [x] `get_lore_article` - single lore article
+- [x] `list_tags` - all tags in a project
+- [x] `get_tag` - tag detail
+- [x] `list_plotlines` - plotlines in a project
+- [x] `get_plotline` - plotline with plot points
+- [x] `list_works` - works with chapters and scene structure
+- [x] `get_work` - single work detail
+- [x] `list_scenes_by_chapter` - scenes in a known chapter
 
 **Quality pass:**
 
@@ -70,7 +73,7 @@ See [MCP_IMPLEMENTATION_PLAN.md](MCP_IMPLEMENTATION_PLAN.md) Phase 3 for full co
 - [ ] Response shaping (strip noise, flatten nesting)
 - [ ] `api()` error handling (structured MCP errors)
 
-### MCP Write Tools (blocked on Review Queue)
+### MCP Write Tools (remaining draft-first expansion)
 
 - [ ] `update_lore_article`
 - [ ] `delete_entity`
